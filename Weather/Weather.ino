@@ -3,7 +3,7 @@
 #include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson.git
 #include <NTPClient.h> //https://github.com/taranais/NTPClient
 #include "DebugPrefTools.h"
-#include <OneButton.h>
+#include "EspButton.h"
 #include "Orbitron_Medium_20.h"
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -77,15 +77,12 @@ byte curBckLight = 1;
 #define StocksXPos 73 // 75
 #define StocksYPos 144
 
-const byte lftBtn = 0;
-const byte rgtBtn = 35;
-// Setup a new OneButton on pin lftBtn.
-OneButton leftBtn(lftBtn, true);
-// Setup a new OneButton on pin rgtBtn.
-OneButton rightBtn(rgtBtn, true);
-//byte butLst;
+#define lftBTN 0
+#define rgtBTN 35
 
-enum { None, SingleClick, DoubleClick, startLongPress, endLongPress };
+LeftBtn leftBtn(lftBTN);
+RightBtn rightBtn(rgtBTN);
+
 
 ///////////////////////////////////////////////////////////
 //
@@ -216,17 +213,6 @@ void wifiSetup()
 
 }
 
-///////////////////////////////////////////////////////////
-//
-void IRAM_ATTR intsLBtn(void* arg) {
-    Serial.printf("ISR Button\n");
-    static bool inv = 1;
-    leftBtn.tick();
-    return;
-    inv = !inv;
-			tft.invertDisplay(inv);
-    //Serial.printf("ISR Button %d has been pressed %u times\n", s->PIN, s->numberKeyPresses);
-}
 
 ///////////////////////////////////////////////////////////
 //
@@ -242,16 +228,6 @@ void onRgtBtnDPress() {
 
 
 
-///////////////////////////////////////////////////////////
-//
-void IRAM_ATTR intsRBtn(void* arg) {
-    static byte rgtBtnLst = -1;
-    rightBtn.tick();
-    Serial.printf("intsRBtn Button\n");
-    //onRgtBtnPress();
-    //Serial.printf("ISR Button %d has been pressed %u times\n", s->PIN, s->numberKeyPresses);
-    
-}
 
 ///////////////////////////////////////////////////////////
 //
@@ -272,35 +248,24 @@ void drawOpenMarketHeaders()
 //
 void setupBtns()
 {
-  leftBtn.attachClick(click1);
-  leftBtn.attachDoubleClick(doubleclick1);
-  leftBtn.attachMultiClick(doubleclick1);
-  
-  leftBtn.attachLongPressStart(longPressStart1);
-  leftBtn.attachLongPressStop(longPressStop1);
-  leftBtn.attachDuringLongPress(longPress1);
-  //leftBtn.setClickMs(300);
-  //leftBtn.setDebounceMs(5);
-
-  rightBtn.attachClick(click2);
-  rightBtn.attachMultiClick(doubleclick2);
-  rightBtn.attachDoubleClick(doubleclick2);
-  rightBtn.attachLongPressStart(longPressStart2);
-  rightBtn.attachLongPressStop(longPressStop2);
-  rightBtn.attachDuringLongPress(longPress2);
-  //rightBtn.setClickMs(500);
-  //rightBtn.setDebounceMs(1);
+  leftBtn.setup();
+  rightBtn.setup();
 }
+
+hw_timer_t *animTimer = NULL;
+
+///////////////////////////////////////////////////////////
+//
+void IRAM_ATTR onAnimTimer() {
+ if (isDispVisible() && viewPorts.isMainWindow())
+   animateImageFrame();
+}
+
 ///////////////////////////////////////////////////////////
 //
 void setup(void) {
   setupBtns();
-	
-  pinMode (lftBtn, INPUT_PULLUP);
-  //butLst = digitalRead (lftBtn);
-  attachInterruptArg(digitalPinToInterrupt(0), intsLBtn, NULL, CHANGE);
-	pinMode(rgtBtn, INPUT_PULLUP);
-  attachInterruptArg(digitalPinToInterrupt(rgtBtn), intsRBtn, NULL, CHANGE );
+
 	tft.init();
 	tft.setRotation(0);
 
@@ -336,20 +301,17 @@ void setup(void) {
   tft.pushImage(StocksXPos +13, StocksYPos +1 ,  32, 32, getPTCIcon32x32());
   timeSetup();
 
-  
+  animTimer = timerBegin(0, 80, true);
+  timerAttachInterrupt(animTimer, &onAnimTimer, true);
+  timerAlarmWrite(animTimer, 150000, true); // every 0.1 seconds
+  timerAlarmEnable(animTimer);
 	 
 	delay(500);
 }
 
 
 
-
-int i = 0;
-
-
-
-//int frame = 0;
-
+//int i = 0;
 
 ///////////////////////////////////////////////////////////
 //
@@ -384,13 +346,6 @@ String timeStamp;
     formattedDate = timeClient.getFormattedDate();
     //Serial.println(formattedDate);
     viewPorts.pushViewPort(0, 0, TFT_WIDTH, 55  , VP_RestorePrev);
- /*int32_t x = tft.getViewportX();      // Always returns viewport x coordinate relative to screen left edge
-  int32_t y = tft.getViewportY();  // Always returns viewport y coordinate relative to screen top edge
-  int32_t w = tft.getViewportWidth();  // Always returns width of viewport
-  int32_t h = tft.getViewportHeight(); // Always returns height of viewport
-  tft.resetViewport();
-  Serial.println("renderTimeDisplay: View port h" + String(h));
-  tft.setViewport(1, 1, TFT_WIDTH, 55); */
   
     int splitT = formattedDate.indexOf("T");
     dateStamp = formattedDate.substring(0, splitT);
@@ -437,163 +392,40 @@ String timeStamp;
         tft.print(":" + dispSeconds);
       }
     }
-   //tft.setViewport(x, y, w, h);
+   
    viewPorts.popViewPort();
 }
 
-///////////////////////////////////////////////////////////
-// 
-int chkButton (const byte pinBut, byte *butLstStat, unsigned long *msecLst /* should reference static value*/)
-{
-    const  unsigned long SINGLCLKTIMEOUT  = 400;
-    //const  unsigned long SINGLCLKTIMEOUT  = 1000;
-    unsigned long msec = millis ();
 
-    // was something before and the time left since was larger then the single click timeout
-    // might be long press
-    if (*msecLst && ((msec - *msecLst) > SINGLCLKTIMEOUT))  {
-        *msecLst = 0;
-        return SingleClick;
-    }
 
-    byte but = digitalRead (pinBut);
-    // New button state is diffrent from the last one
-    if (*butLstStat != but)  {
-        *butLstStat = but;
-        delay (10);           // **** debounce
 
-        if (LOW == but)  {   // press
-            if (*msecLst)  { // 2nd press
-                *msecLst = 0;
-                return DoubleClick;
-            }
-            else
-                *msecLst = 0 == msec ? 1 : msec;
-        }
-    }
 
-    return None;
-} 
 
-void drawX(void)
-{
-  tft.fillScreen(tft.color565(25,25,25)); // Grey
 
-  // Draw circle
-  tft.drawCircle(tft.width()/2, tft.height()/2, tft.width()/4, TFT_RED);
 
-  // Draw diagonal lines
-  tft.drawLine(0 ,                0, tft.width()-1, tft.height()-1, TFT_GREEN);
-  tft.drawLine(0 , tft.height()-1, tft.width()-1,                0, TFT_BLUE);
-
-  tft.setTextDatum(MC_DATUM);
-  tft.setTextColor(TFT_WHITE, tft.color565(25,25,25));
-  tft.drawString("Hello World!", tft.width()/2, tft.height()/2, 4); // Font 4
-}
 
 ///////////////////////////////////////////////////////////
 //
-void chkRBtn()
+void LeftBtn::onDoubleClick()
 {
-  static byte rgtBtnLst = -1;
-  static unsigned long rgtmSecLst = 0;
-
-  switch (chkButton (rgtBtn, &rgtBtnLst, &rgtmSecLst))  {
-    case SingleClick:
-        Serial.println ("Right single");
-        
-        break;
-
-    case DoubleClick:
-        Serial.println ("Right double");
-        onRgtBtnDPress();
-        break; 
-
-    case startLongPress:
-        Serial.println ("Right startLongPress");
-        
-        break;
-
-    case endLongPress:
-        Serial.println ("Right endLongPress");
-       
-        break;
-
-    } 
-}
-
-///////////////////////////////////////////////////////////
-//
-void chkLBtn()
-{
-  static byte lftBtnLst = -1;
-  static unsigned long lftmSecLst = 0;
-
-  switch (chkButton (lftBtn, &lftBtnLst, &lftmSecLst))  {
-    case SingleClick:
-        Serial.println ("Left single");
-        break;
-
-    case DoubleClick:
-        Serial.println ("Left double");
-        break; 
-    case startLongPress:
-        Serial.println ("Left startLongPress");
-        break;
-    case endLongPress:
-        Serial.println ("Left endLongPress");
-        break;
-
-    } 
-}
-
-// This function will be called when the button1 was pressed 1 time (and no 2. button press followed).
-void click1() {
-  Serial.println("Button 1 click.");
-}  // click1
-
-
-// This function will be called when the button1 was pressed 2 times in a short timeframe.
-void doubleclick1() {
-  static bool inv = 1;
-    
-    inv = !inv;
-			tft.invertDisplay(inv);
+  mInv = !mInv;
+	tft.invertDisplay(mInv);
   Serial.println("Button 1 doubleclick.");
-}  // doubleclick1
+}  
 
 
-// This function will be called once, when the button1 is pressed for a long time.
-void longPressStart1() {
-  Serial.println("Button 1 longPress start");
-}  // longPressStart1
-
-
-// This function will be called often, while the button1 is pressed for a long time.
-void longPress1() {
-  Serial.println("Button 1 longPress...");
-}  // longPress1
-
-
-// This function will be called once, when the button1 is released after beeing pressed for a long time.
-void longPressStop1() {
-  Serial.println("Button 1 longPress stop");
-}  // longPressStop1
-
-
-// ... and the same for button 2:
-
-void click2() {
-  Serial.println("Button 2 click.");
-}  // click2
-
-
-void doubleclick2() {
+///////////////////////////////////////////////////////////
+//
+void RightBtn::onDoubleClick()
+ {
   Serial.println("Button 2 doubleclick.");
   onRgtBtnDPress();
-}  // doubleclick2
+} 
 
-void longPressStart2() {
+///////////////////////////////////////////////////////////
+//
+void RightBtn::onStartLongPress()
+{
 
   Serial.println("Button 2 longPress start");
   #define Y_ViewPort 87
@@ -601,44 +433,35 @@ void longPressStart2() {
 
   
   //drawX();
-}  // longPressStart2
+}  
 
 
-void longPress2() {
-  Serial.println("Button 2 longPress...");
-}  // longPress2
-
-void longPressStop2() {
+///////////////////////////////////////////////////////////
+//
+void RightBtn::onEndLongPress()
+{
   Serial.println("Button 2 longPress stop");
    viewPorts.popViewPort();
 
 }  // longPressStop2
 
 
-// End
 
 ///////////////////////////////////////////////////////////
 //
 void chkBtns()
 {
-  //chkLBtn();
-  //chkRBtn();
-  leftBtn.tick();
-  rightBtn.tick();
-
+  leftBtn.loop();
+  rightBtn.loop();
 }
 
 ///////////////////////////////////////////////////////////
 //
 void loop() {
   static int count = 0;
-  int32_t h = -1;
+
 
   chkBtns();
-  h = tft.getViewportHeight(); // Always returns height of viewport
-  //int timeupdate = startPrefAction("Loop");
-  //Serial.println("==========New Loop round ==================");
-
   
     if (!timeClient.update()) 
     {
@@ -652,10 +475,7 @@ void loop() {
 
   if (  isDispVisible() && viewPorts.isMainWindow())
   {
-    // int anim = startPrefAction("animateImageFrame");
-    animateImageFrame();
-    // Serial.println("animateImageFrame " + String(getAvgPrefTime(anim)));
-    // Update Weather data only every 2000 times
+
     if ( count == 0)
        renderWeatherData(); // about every 3 minutes
     if ((count % 500) == 0) // about 4 times in 3 minutes
@@ -668,7 +488,7 @@ void loop() {
 
   }
 
-	delay(80);
+	delay(10);
   //Serial.println("Loop " + String(getAvgPrefTime(timeupdate)));
 }
 
@@ -739,7 +559,7 @@ void renderStocksData()
     if (isMarketOpenNow )
      drawOpenMarketHeaders();
     else 
-     tft.fillRect(StocksXPos , StocksYPos + 50, TFT_WIDTH - StocksXPos , TFT_HEIGHT - (StocksYPos + 50) , TFT_BLACK);
+     tft.fillRect(StocksXPos , StocksYPos + 48, TFT_WIDTH - StocksXPos , TFT_HEIGHT - (StocksYPos + 48) , TFT_BLACK);
     wasMarketOpen = isMarketOpenNow;
   }
   if (!isMarketOpenNow && notTheFirstTime )
