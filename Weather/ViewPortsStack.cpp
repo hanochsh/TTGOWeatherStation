@@ -1,15 +1,22 @@
 #include "ViewPortsStack.h"
+#include "DebugPrefTools.h"
 
 #define TFT_GREY 0x5AEB
-#define ST7735_GRAY    0x8410
 
+#define MyDarkGREY (byte)1 << 11 | (byte)1 << 5 | (byte)1
 ////////////////////////////////////////////////////////////
 //
 uint16_t  ViewPortsStack::pushViewPort(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t Opt)
 {
 	mCurViewPortPtr++;
+#ifdef _DEBUG_VIEWPORT
+  Serial.println("ViewPortsStack::pushViewPort()");
+#endif
 	if (mCurViewPortPtr == MaxStackSize)
 	{
+#ifdef _DEBUG_VIEWPORT
+  Serial.println("pushViewPort(): if (mCurViewPortPtr == MaxStackSize)");
+#endif
 		mCurViewPortPtr--;
 		return FALSE;
 	}
@@ -22,23 +29,41 @@ uint16_t  ViewPortsStack::pushViewPort(int32_t x, int32_t y, int32_t w, int32_t 
 
 	if (Opt & VP_RestorePrev)
 	{
+#ifdef _DEBUG_VIEWPORT
+  Serial.println("pushViewPort(): if (Opt & VP_RestorePrev)");
+#endif
 		mStackArr[mCurViewPortPtr].px = mtftPtr->getViewportX();      // Always returns viewport x coordinate relative to screen left edge
 		mStackArr[mCurViewPortPtr].py = mtftPtr->getViewportY();  // Always returns viewport y coordinate relative to screen top edge
 		mStackArr[mCurViewPortPtr].pw = mtftPtr->getViewportWidth();  // Always returns width of viewport
 		mStackArr[mCurViewPortPtr].ph = mtftPtr->getViewportHeight(); // Always returns height of viewport
+#ifdef _DEBUG_VIEWPORT
+  Serial.println("pushViewPort(): if (Opt & VP_RestorePrev) all the get functions");
+#endif
 		mtftPtr->resetViewport();
+#ifdef _DEBUG_VIEWPORT
+  Serial.println("pushViewPort(): if (Opt & VP_RestorePrev) mtftPtr->resetViewport()");
+#endif
 		mtftPtr->setViewport(x, y, w, h);
+#ifdef _DEBUG_VIEWPORT
+  Serial.println("pushViewPort(): if (Opt & VP_RestorePrev) mtftPtr->setViewport(x, y, w, h)");
+#endif
 	}
 
 	if (Opt & VP_SaveUnder)
 	{
+#ifdef _DEBUG_VIEWPORT
+  Serial.println("pushViewPort(): if (Opt & VP_SaveUnder)");
+#endif
 		mStackArr[mCurViewPortPtr].saveUnder = (uint16_t*)malloc(sizeof(uint16_t) * (h * w));
 		mtftPtr->setViewport(x, y, w, h);
 		mtftPtr->readRect(0, 0, w, h, mStackArr[mCurViewPortPtr].saveUnder);
 		//mtftPtr->frameViewport(TFT_GREY, -2);
-		mtftPtr->fillScreen(ST7735_GRAY);
+		mtftPtr->fillScreen(MyDarkGREY);
 		
 	}
+#ifdef _DEBUG_VIEWPORT
+  Serial.println("pushViewPort(): return TRUE");
+#endif
 	return TRUE;
 }
 
@@ -46,7 +71,9 @@ uint16_t  ViewPortsStack::pushViewPort(int32_t x, int32_t y, int32_t w, int32_t 
 //
 void ViewPortsStack::popViewPort()
 {
-	
+	#ifdef _DEBUG_VIEWPORT
+  Serial.println("ViewPortsStack::popViewPort()");
+#endif
 	if (mStackArr[mCurViewPortPtr].opt & VP_RestorePrev)
 	{
 		mtftPtr->resetViewport();

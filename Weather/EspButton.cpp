@@ -4,7 +4,8 @@
 
 
 ///////////////////////////////////////////////////////////////
-/// </summary>
+/// </summary> 
+/*
 int EspButton::chkButton()
 {
     const  unsigned long SINGLCLKTIMEOUT = 400;
@@ -35,7 +36,7 @@ int EspButton::chkButton()
     }
 
     return None;
-}
+} */
 
 ///////////////////////////////////////////////////////////////
 /// </summary>
@@ -84,7 +85,7 @@ void EspButton::onEndLongPressCB(void *pVThis)
 }
 
 ///////////////////////////////////////////////////////////////
-
+/*
 void EspButton::tick()
 {
     switch (chkButton()) {
@@ -109,4 +110,4 @@ void EspButton::tick()
         break;
 
     }
-}
+} */
