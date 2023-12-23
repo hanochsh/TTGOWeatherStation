@@ -17,6 +17,7 @@ public:
 		mFreq = freq;
 		mRenderOpt = -1;
 		mData = NULL;
+		enable();
 	}
 
 	void createCoreTask(TaskHandle_t* handle);
@@ -26,7 +27,10 @@ public:
 	}
 	static void taskCoreCB(void* vThis);
 	virtual void renderTask(int opt, void *data ) {}
+	virtual void preTaskLoop(void* data) {}
 	void setRenderOpt(int set) { mRenderOpt = set; }
+	void enable() { mEnabled = true; }
+	void disable() { mEnabled = false; }
 
 private:
 	char* mName;
@@ -36,6 +40,7 @@ private:
 	int   mCore;
 	int   mFreq;
 	int   mRenderOpt;
+	int   mEnabled;
 	void* mData;
 };
 
@@ -44,8 +49,34 @@ private:
 ///////////////////////////////////////////////////////////
 class MainTimeRendererTask : public xEspTaskRenderer {
 public:
-	MainTimeRendererTask() : xEspTaskRenderer("MainTimeRendererTask", 2000, 2, 1,800) {}
+	MainTimeRendererTask() : xEspTaskRenderer("MainTimeRendererTask", 2000, 2, 1, 800) {
+		setRenderOpt(true);
+		resetStatics();
+	}
 	void renderTask(int opt, void* data);
+	void renderTimeDisplay(int opt, int vpX, int vpY);
+	void enableMainScreen()
+	{
+		setRenderOpt(true);
+		resetStatics();
+	}
+	void disableMainScreen()
+	{
+		setRenderOpt(false);
+		resetStatics();
+	}
+private:
+	void resetStatics() {
+		mdispSeconds = mdispTime = "";
+		mshowSec = false;
+		mcurX = mcurY = -1;
+	}
+	
+	String mdispSeconds;
+	String mdispTime;
+	int mcurX;
+	int mcurY;
+	int mshowSec;
 };
 
 ///////////////////////////////////////////////////////////
@@ -53,8 +84,12 @@ public:
 ///////////////////////////////////////////////////////////
 class StockRendererTask : public xEspTaskRenderer {
 public:
-	StockRendererTask() : xEspTaskRenderer("StockRendererTask", 6000, 1, 1, 45000) {}
+	StockRendererTask() : xEspTaskRenderer("StockRendererTask", 6000, 1, 1, 45000) { setMarketOpen(false); }
 	void renderTask(int opt, void* data);
+	void setMarketOpen(int isOpen) { mMarketOpen = isOpen; }
+private:
+	void renderStocksData();
+	int mMarketOpen;
 };
 
 ///////////////////////////////////////////////////////////
@@ -62,8 +97,10 @@ public:
 ///////////////////////////////////////////////////////////
 class AnimationRendererTask : public xEspTaskRenderer {
 public:
-	AnimationRendererTask() : xEspTaskRenderer("AnimationRendererTask", 2000, 0, 0, 150) {}
+	AnimationRendererTask() : xEspTaskRenderer("AnimationRendererTask", 3000, 0, 0, 150) { mFrame = 0; }
 	void renderTask(int opt, void* data);
+private:
+	int mFrame;
 };
 
 ///////////////////////////////////////////////////////////
@@ -81,5 +118,14 @@ public:
 class CheckButtonsTask : public xEspTaskRenderer {
 public:
 	CheckButtonsTask() : xEspTaskRenderer("CheckButtonsTask", 2000, 1, 0, 10) {}
+	void renderTask(int opt, void* data);
+};
+
+///////////////////////////////////////////////////////////
+//
+///////////////////////////////////////////////////////////
+class MsgReciverTask : public xEspTaskRenderer {
+public:
+	MsgReciverTask() : xEspTaskRenderer("MsgReciverTask", 5000, 1, 1, 10) {}
 	void renderTask(int opt, void* data);
 };

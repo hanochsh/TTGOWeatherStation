@@ -42,6 +42,7 @@ public:
 		mtftPtr = tft;
 	}
 	uint16_t  pushViewPort(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t Opt);
+	uint16_t  pushViewPortExt(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t Opt, byte bckColor);
 	void popViewPort();
 	uint16_t  isMainWindow();
 private:

@@ -26,13 +26,16 @@ void xEspTaskRenderer::taskCoreCB(void* vThis)
 {
 	xEspTaskRenderer* pThis = (xEspTaskRenderer*)vThis;
 	TickType_t xLastWakeTime;
+	//Serial.println("EspTaskRenderer::taskCoreCB is set for:" + String(pThis->mName));
 	const TickType_t xFrequency = pThis->mFreq;
 
+	pThis->preTaskLoop(pThis->mData);
 	// Initialise the xLastWakeTime variable with the current time.
 	xLastWakeTime = xTaskGetTickCount();
 	for (;;) {
-
-		pThis->renderTask(pThis->mRenderOpt, pThis->mData);
+		//Serial.println("EspTaskRenderer::taskCoreCB loop: " + String(pThis->mName));
+		if ( pThis->mEnabled ) // suspend from outside
+		  pThis->renderTask(pThis->mRenderOpt, pThis->mData);
 		// Wait for the next cycle.
 		vTaskDelayUntil(&xLastWakeTime, xFrequency);
 	}

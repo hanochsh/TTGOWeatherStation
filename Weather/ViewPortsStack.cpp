@@ -8,6 +8,13 @@
 //
 uint16_t  ViewPortsStack::pushViewPort(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t Opt)
 {
+	return pushViewPortExt(x, y, w, h, Opt, MyDarkGREY);
+}
+
+////////////////////////////////////////////////////////////
+//
+uint16_t  ViewPortsStack::pushViewPortExt(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t Opt, byte bckColor)
+{
 	mCurViewPortPtr++;
 #ifdef _DEBUG_VIEWPORT
   Serial.println("ViewPortsStack::pushViewPort()");
@@ -58,7 +65,7 @@ uint16_t  ViewPortsStack::pushViewPort(int32_t x, int32_t y, int32_t w, int32_t 
 		mtftPtr->setViewport(x, y, w, h);
 		mtftPtr->readRect(0, 0, w, h, mStackArr[mCurViewPortPtr].saveUnder);
 		//mtftPtr->frameViewport(TFT_GREY, -2);
-		mtftPtr->fillScreen(MyDarkGREY);
+		mtftPtr->fillScreen(bckColor);
 		
 	}
 #ifdef _DEBUG_VIEWPORT

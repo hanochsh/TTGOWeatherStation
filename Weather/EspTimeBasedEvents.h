@@ -1,30 +1,55 @@
 #pragma once
 #include <Time.h>
 #include <NTPClient.h> 
+#include "xEspTaskRenderer.h"
 
+enum EspEventType { NoEvent, StopAnimationEvnt, ResumeAnimationEvnt, StartNightEvnt, EndNightEvnt, StartSleepEvnt, 
+	                MarketOpenEvnt, MarketCloseEvnt };
 
-enum EspEvetType { StartNight, EndNight, StartSleep };
+#define Sun  0b00000001
+#define Mon  0b00000010
+#define Tue  0b00000100
+#define Wed  0b00001000
+#define Thu  0b00010000
+#define Fri  0b00100000
+#define Sat  0b01000000
+#define Week 0b01111111
+#define USAW 0b00111110
+#define ISRW 0b00011111
+
+const unsigned short WeekDays[7] = {Sun, Mon, Tue, Wed, Thu, Fri, Sat};
 
 struct EspTimeEvent
 {
-	int mEvent;
-	int mHour;
-	int mMinut;
+	EspEventType mStartEvent;
+	EspEventType mEndEvent;
+	unsigned short mStartDay;
+	int mStartHour;
+	int mStartMinut;
+	int mDuration;
+	EspEventType mLastSent;
 };
 
 
-class EspTimeEvents
-{
+///////////////////////////////////////////////////
+/// </summary>
+///////////////////////////////////////////////////
+class EspTimeEvents : public xEspTaskRenderer {
 public:
-	EspTimeEvents(NTPClient* ntpTime) { mEvents = NULL; mNumEvents = 0; mNTPTime = ntpTime; }
-	EspTimeEvents() { mEvents = NULL; mNumEvents = 0; mNTPTime = NULL; }
+	EspTimeEvents() :xEspTaskRenderer ("EspTimeEvents", 2000, 1, 0, 45000) { mEvents = NULL; mNumEvents = 0; mNTPClient = NULL; }
 	~EspTimeEvents() { delete[] mEvents; }
 
-	void addEvent(int type, int hour, int minuts );
-	static void TaskCore(void* pvParameters);
-	static void setNTPClient(void* ntpTime) { mNTPTime = ntpTime; }
+	void addEvent(EspEventType startEvent, int startHour, int startMinuts, int duration , EspEventType endEvent);
+	void addEventDay(EspEventType startEvent, unsigned short startDay, int startHour, int startMinuts, int duration, EspEventType endEvent);
+	void renderTask(int opt, void* data);
+	void preTaskLoop(void* data);
+	
 private:
-	static void* mNTPTime;
+	void setNTPClient(void* ntpTime) { mNTPClient = (NTPClient * )ntpTime; }
+	EspEventType  getEventTypeToSend(EspTimeEvent* event);
+	void updateNTPClient();
+
+	NTPClient* mNTPClient;
 	void resizeArray(int newsize);
 	EspTimeEvent *mEvents;
 	int mNumEvents;

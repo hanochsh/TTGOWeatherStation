@@ -5,14 +5,91 @@
 
 extern SemaphoreHandle_t getWifiMutex();
 extern QueueHandle_t     getMessageQueue();
+
 ///////////////////////////////////////////////////////////////
 /// </summary>
-void EspTimeEvents::addEvent(int event, int hour, int minuts) {
+void EspTimeEvents::addEvent(EspEventType startEvent, int startHour, int startMinuts, int duration /*minutes*/, EspEventType endEvent) {
+    addEventDay(startEvent, Week, startHour, startMinuts, duration, endEvent);
+}
+
+///////////////////////////////////////////////////////////////
+/// </summary>
+void EspTimeEvents::addEventDay(EspEventType startEvent, unsigned short startDay, int startHour, int startMinuts, int duration, EspEventType endEvent)
+{
   resizeArray(mNumEvents + 1);
-  mEvents[mNumEvents].mEvent = event;
-  mEvents[mNumEvents].mHour = hour;
-  mEvents[mNumEvents].mMinut = minuts;
+
+  mEvents[mNumEvents].mStartDay = startDay;
+  mEvents[mNumEvents].mStartEvent = startEvent;
+  mEvents[mNumEvents].mStartHour = startHour;
+  mEvents[mNumEvents].mStartMinut = startMinuts;
+  mEvents[mNumEvents].mDuration = duration;
+  mEvents[mNumEvents].mEndEvent = endEvent;
+  mEvents[mNumEvents].mLastSent = NoEvent;
   mNumEvents++;
+}
+
+///////////////////////////////////////////////////////////////
+/// </summary>
+EspEventType EspTimeEvents::getEventTypeToSend(EspTimeEvent *event)
+{
+    int curHour   = mNTPClient->getHours();
+    int curMinute = mNTPClient->getMinutes();
+    int durHours  = event->mDuration / 60;
+    int endHour   = event->mStartHour + durHours;
+    int endMinute = event->mStartMinut + (event->mDuration % 60);
+    while (endMinute >= 60)
+    {
+        endHour++;
+        endMinute = endMinute - 60;
+    };
+    while (endHour >= 24)
+    {
+        endHour = endHour - 24;
+    };
+    /*
+    Serial.println("EspTimeEvents::getEventTypeToSend: Cur Time" + String(curHour) + ":" + String(curMinute));
+    Serial.println("EspTimeEvents::getEventTypeToSend: Start Time" + String(event->mStartHour) + ":" + String(event->mStartMinut));
+    Serial.println("EspTimeEvents::getEventTypeToSend: Duration : " + String(durHours) + ":" + String((event->mDuration % 60)));
+    Serial.println("EspTimeEvents::getEventTypeToSend: End Time" + String(endHour) + ":" + String(endMinute)); 
+    Serial.println("EspTimeEvents::getEventTypeToSend: (curHour  >= event->mStartHour) : " + String((curHour >= event->mStartHour)));
+    Serial.println("EspTimeEvents::getEventTypeToSend: (curMinute >= event->mStartMinut) : " + String((curMinute >= event->mStartMinut)));
+    Serial.println("EspTimeEvents::getEventTypeToSend: (curHour <= endHour) : " + String((curHour <= endHour)));
+    Serial.println("EspTimeEvents::getEventTypeToSend: (curMinute <= endMinute) : " + String((curMinute <= endMinute))); */
+
+    unsigned short today = WeekDays[mNTPClient->getDay()];
+   // Serial.println("EspTimeEvents::getEventTypeToSend:  event->mStartDay " + String(event->mStartDay));
+    if ((0 == (today & event->mStartDay)) && (event->mLastSent == NoEvent))
+    { /*
+        Serial.println("EspTimeEvents::getEventTypeToSend:  Sorry, this Event does not start today");
+        //Serial.println("EspTimeEvents::getEventTypeToSend:  mNTPClient->getDay() " + String(mNTPClient->getDay()));
+        Serial.println("EspTimeEvents::getEventTypeToSend:  today " + String(today));
+       
+        Serial.println("EspTimeEvents::getEventTypeToSend:  (today & event->mStartDay) " + String((today & event->mStartDay)));
+        Serial.println("EspTimeEvents::getEventTypeToSend:  (event->mLastSent == NoEvent) " + String((event->mLastSent == NoEvent)));*/
+        return NoEvent;
+    }
+
+    if ((curHour  >= event->mStartHour) && (curMinute >= event->mStartMinut ) &&
+        (curHour <= endHour) && (  curMinute <= endMinute))
+    { // within Range of the event
+        Serial.println("EspTimeEvents::getEventTypeToSend:  Within Rang");
+        if (event->mLastSent == NoEvent) // This is the first send
+            return event->mLastSent = event->mStartEvent;
+
+        if ((event->mLastSent == event->mStartEvent) &&// already send Start, sould check if end arrived
+            ((curHour == endHour) && (curMinute == endMinute)))
+        {
+            Serial.println("EspTimeEvents::getEventTypeToSend: END Event should be sent");
+            return event->mLastSent = event->mEndEvent; // sending end event
+        }
+
+    }
+   
+    Serial.println("EspTimeEvents::getEventTypeToSend:  Returning NoEvent");
+    if (event->mLastSent == event->mEndEvent) // End event was already send
+      return event->mLastSent = NoEvent;
+
+    return NoEvent;
 }
 
 ///////////////////////////////////////////////////////////////
@@ -30,12 +107,62 @@ void EspTimeEvents::resizeArray(int newSize) {
   mEvents = tempArray;
 
   // Update the arraySize variable
-  mNumEvents = newSize;
+  //mNumEvents = newSize; Resize does not mean the number of events changed
 }
 void deepSleepTimerCallback(TimerHandle_t xTimer) {
   Serial.println("Timer expired. Going to deep sleep...");
   esp_deep_sleep_start(); // Trigger deep sleep
 }
+
+
+///////////////////////////////////////////////////////////////
+/// </summary>
+void EspTimeEvents::updateNTPClient()
+{
+    SemaphoreHandle_t mWifiMutex = getWifiMutex();
+    if (xSemaphoreTake(mWifiMutex, portMAX_DELAY)) {
+        mNTPClient->update();
+        //mNTPClient->forceUpdate();
+     xSemaphoreGive(mWifiMutex);
+    }
+}
+///////////////////////////////////////////////////////////////
+/// </summary>
+void EspTimeEvents::preTaskLoop(void* data)
+{
+    setNTPClient(data);
+    updateNTPClient();
+    //enum EspEvetType { StopAnimation, StartNight, EndNight, StartSleep };
+    addEvent(StopAnimationEvnt, 22, 18, 2, ResumeAnimationEvnt); 
+    addEvent(StopAnimationEvnt, 22, 51, 2, ResumeAnimationEvnt);
+    addEvent(StartNightEvnt, 0, 30, 7*60, EndNightEvnt); 
+    addEventDay(MarketOpenEvnt, USAW, 16, 30, 7 * 60, MarketCloseEvnt);
+
+}
+
+///////////////////////////////////////////////////////////////
+/// </summary>
+void EspTimeEvents::renderTask(int opt, void* data)
+{
+    EspEventType sendMsg = NoEvent;
+    int i;
+
+    updateNTPClient();
+
+    for (i = 0; i < mNumEvents; i++)
+    {
+        sendMsg = getEventTypeToSend(&mEvents[i]);
+        if (sendMsg != NoEvent)
+        {
+            if (xQueueSend(getMessageQueue(), &sendMsg, 0) == pdTRUE) {
+                Serial.print("Sent data to queue: ");
+                Serial.println(sendMsg);
+            }
+        }
+    }
+}
+
+#ifdef old
 
 ///////////////////////////////////////////////////////////////
 /// </summary>
@@ -96,4 +223,5 @@ Serial.println("EspTimeEvents::TaskCore : going to sleep for 40 sec ");
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
     //vTaskDelay(45000);
   }
-}
+} 
+#endif

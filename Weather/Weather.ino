@@ -70,12 +70,12 @@ extern "C" const unsigned short *getPTCIcon48x48();
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
-EspTimeEvents espTimeEvents();
+
 ViewPortsStack viewPorts(&tft);
 
 
 
-byte curBckLight = 1;
+byte curBckLight = 2;
 
 #define TempXPos 0    // 60
 #define TempYPos 180  //148
@@ -99,21 +99,23 @@ TaskHandle_t hRegularTimeDisplayTaskCore;
 TaskHandle_t hBottonsCheck;
 TaskHandle_t hWeatherUpdateTask;
 TaskHandle_t hStockUpdateTask;
+TaskHandle_t hMsgReciverTask;
 SemaphoreHandle_t mWifiMutex;
 SemaphoreHandle_t mTFTMutex;
 
-MainTimeRendererTask  timeRenderer;
-StockRendererTask     StockRenderer;
+MainTimeRendererTask timeRenderer;
+StockRendererTask stockRenderer;
 AnimationRendererTask animRenderer;
-WeatherRendererTask   weatherRenderer;
-CheckButtonsTask      checkBtnsTask;
+WeatherRendererTask weatherRenderer;
+CheckButtonsTask checkBtnsTask;
+EspTimeEvents espTimeEvents;
+MsgReciverTask espMsgsReciver;
 
 SemaphoreHandle_t getWifiMutex() {
   return mWifiMutex;
 }
 
-QueueHandle_t getMessageQueue()
-{
+QueueHandle_t getMessageQueue() {
   return messageQueue;
 }
 
@@ -167,9 +169,9 @@ void drwWeatherIcon(String icon) {
 ///////////////////////////////////////////////////////////
 //
 int getBckLgt(int i) {
-#define NumBckLgt 5
+#define NumBckLgt 6
 
-  int backlight[NumBckLgt] = { 0, 30, 60, 120, 220 };
+  int backlight[NumBckLgt] = { 0, 1, 30, 60, 120, 220 };
 
   if (i > (NumBckLgt - 1))
     return getCurBckLgt();
@@ -280,66 +282,111 @@ void setupBtns() {
 
 
 
-
-
 ///////////////////////////////////////////////////////////
 //
-void TaskRenderRegularTime(void *pvParameters) {
-  TickType_t xLastWakeTime;
-  const TickType_t xFrequency = 900;
+void MainTimeRendererTask::renderTask(int opt, void *data) {
 
-  //vTaskDelay(1000);
-  // Initialise the xLastWakeTime variable with the current time.
-  xLastWakeTime = xTaskGetTickCount();
-  int receivedData = -1;
-  for (;;) {
-
-    //Serial.println("Running Animation");
-    if (xQueueReceive(getMessageQueue(), &receivedData, 10) == pdTRUE) {
-      Serial.print("Receiver Task TaskRenderRegularTime received data from queue: ");
-      Serial.println(receivedData);
-    }
-
-    renderTimeDisplay();
-    // Wait for the next cycle.
-    vTaskDelayUntil(&xLastWakeTime, xFrequency);
-  }
-}
-
-
-
-///////////////////////////////////////////////////////////
-//
-void MainTimeRendererTask::renderTask(int opt, void *data )
-{
-  renderTimeDisplay();
+  renderTimeDisplay(opt, 0, 0);
 }
 
 ///////////////////////////////////////////////////////////
 //
-void StockRendererTask::renderTask(int opt, void *data )
-{
+void StockRendererTask::renderTask(int opt, void *data) {
   renderStocksData();
 }
 
 ///////////////////////////////////////////////////////////
 //
-void AnimationRendererTask::renderTask(int opt, void *data )
-{
-  animateImageFrame();
+void AnimationRendererTask::renderTask(int opt, void *data) {
+  //animateImageFrame();
+  if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+    tft.pushImage(0, 82, 135, 63, getAnimFrame(mFrame));
+    // Release the mutex when done
+    xSemaphoreGive(mTFTMutex);
+  }
+
+  mFrame++;
+  if (mFrame >= 10)
+    mFrame = 0;
 }
 
 ///////////////////////////////////////////////////////////
 //
-void WeatherRendererTask::renderTask(int opt, void *data )
-{
+void disableMainSCRInfo() {
+  animRenderer.disable();
+  stockRenderer.disable();
+  weatherRenderer.disable();
+}
+
+///////////////////////////////////////////////////////////
+//
+void enableMainSCRInfo() {
+  animRenderer.enable();
+  stockRenderer.enable();
+  weatherRenderer.enable();
+}
+
+///////////////////////////////////////////////////////////
+//
+void MsgReciverTask::renderTask(int opt, void *data) {
+  int recEvent = -1;
+
+  if (xQueueReceive(getMessageQueue(), &recEvent, 0) == pdTRUE) {
+    Serial.print("MsgReciverTask::renderTask received data from queue: ");
+    Serial.println(recEvent);
+
+    switch (recEvent) {
+      case StopAnimationEvnt:
+        animRenderer.disable();
+        //vTaskSuspend(hAnimationTaskCore);
+        break;
+      case ResumeAnimationEvnt:
+        animRenderer.enable();
+        //vTaskResume(hAnimationTaskCore);
+        break;
+      case StartNightEvnt:
+        ledcWrite(pwmLedChannelTFT, 1);
+        disableMainSCRInfo();
+        if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+          viewPorts.pushViewPortExt(0, 0, TFT_WIDTH, TFT_HEIGHT, VP_SaveUnder, TFT_BLACK);
+          // Release the mutex when done
+          xSemaphoreGive(mTFTMutex);
+        }
+        timeRenderer.disableMainScreen();
+        break;
+      case EndNightEvnt:
+        ledcWrite(pwmLedChannelTFT, getCurBckLgt());
+        
+        if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+          viewPorts.popViewPort();
+          // Release the mutex when done
+          xSemaphoreGive(mTFTMutex);
+        }
+        timeRenderer.enableMainScreen();
+        enableMainSCRInfo();
+        break;
+        case MarketOpenEvnt:
+        Serial.println("MsgReciverTask::renderTask received MarketOpenEvnt");
+        stockRenderer.setMarketOpen(true);
+        break;
+        case MarketCloseEvnt:
+        Serial.println("MsgReciverTask::renderTask received MarketCloseEvnt");
+        stockRenderer.setMarketOpen(false);
+        break;
+
+    }
+  }
+}
+
+///////////////////////////////////////////////////////////
+//
+void WeatherRendererTask::renderTask(int opt, void *data) {
   renderWeatherData();
 }
 
 ///////////////////////////////////////////////////////////
 //
-void CheckButtonsTask::renderTask(int opt, void *data )
-{
+void CheckButtonsTask::renderTask(int opt, void *data) {
   chkBtns();
 }
 
@@ -364,14 +411,7 @@ void setup(void) {
 
   tft.setTextColor(TFT_ORANGE, TFT_BLACK);
   tft.setCursor(TempXPos, TempYPos + 24, 2);
-  tft.println("Humidity"); /*
-  tft.setCursor(StocksXPos , StocksYPos + 60);
-  tft.print("Day");
-  tft.setTextFont(1);
-  tft.setCursor(StocksXPos , StocksYPos + 79);
-  tft.print("H: $");
-  tft.setCursor(StocksXPos , StocksYPos + 89);
-  tft.print("L: $"); */
+  tft.println("Humidity");
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setFreeFont(&Orbitron_Medium_20);
   tft.setCursor(6, 80);
@@ -384,26 +424,20 @@ void setup(void) {
   timeSetup();
   mTFTMutex = xSemaphoreCreateMutex();
   // Create the message queue
-  messageQueue = xQueueCreate(QUEUE_SIZE, sizeof(int)); 
- 
+  messageQueue = xQueueCreate(QUEUE_SIZE, sizeof(int));
+
+
   delay(500);
-  xTaskCreatePinnedToCore(
-    EspTimeEvents::TaskCore,   /* Task function. */
-    "EspTimeEvents::TaskCore", /* name of task. */
-    2000,                      /* Stack size of task */
-    &timeClient,               /* parameter of the task */
-    1,                         /* priority of the task */
-    &hEspTimeEventsTaskCore,   /* Task handle to keep track of created task */
-    0);                        /* pin task to core 0 */
+  espTimeEvents.createCoreTask(&hEspTimeEventsTaskCore, (void *)&timeClient);
+  timeRenderer.createCoreTask(&hRegularTimeDisplayTaskCore);
+  stockRenderer.createCoreTask(&hStockUpdateTask);
+  weatherRenderer.createCoreTask(&hWeatherUpdateTask);
+  checkBtnsTask.createCoreTask(&hBottonsCheck);
+  animRenderer.createCoreTask(&hAnimationTaskCore);
+  espMsgsReciver.createCoreTask(&hMsgReciverTask);
 
-   timeRenderer.createCoreTask(&hRegularTimeDisplayTaskCore);
-   StockRenderer.createCoreTask(&hStockUpdateTask);
-   weatherRenderer.createCoreTask(&hWeatherUpdateTask);
-   checkBtnsTask.createCoreTask(&hBottonsCheck);
-   animRenderer.createCoreTask(&hAnimationTaskCore);
-
-    // Start the FreeRTOS scheduler
-  vTaskStartScheduler();
+  // Start the FreeRTOS scheduler
+  //vTaskStartScheduler(); // must not be called in ESP32 ?
 
 #ifdef _DEBUG_INO
   Serial.print(" End of Setup(), Main is running on core ");
@@ -413,32 +447,30 @@ void setup(void) {
 
 
 
-//int i = 0;
+
 
 ///////////////////////////////////////////////////////////
 //
 void animateImageFrame() {
   static int frame = 0;
 
-    if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
-      tft.pushImage(0, 82, 135, 63, getAnimFrame(frame));
-      // Release the mutex when done
-      xSemaphoreGive(mTFTMutex);
-    }
+  if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+    tft.pushImage(0, 82, 135, 63, getAnimFrame(frame));
+    // Release the mutex when done
+    xSemaphoreGive(mTFTMutex);
+  }
 
   frame++;
   if (frame >= 10)
     frame = 0;
 }
 
-String dispSeconds = "";
-String dispTime = "";
+
+
 
 ///////////////////////////////////////////////////////////
 //
-void renderTimeDisplay() {
-  static int curX, curY;
-  static int showSec = FALSE;
+void MainTimeRendererTask::renderTimeDisplay(int opt, int vpX, int vpY) {
   String curTime = "";
   String dateStamp;
   String formattedDate;
@@ -446,95 +478,54 @@ void renderTimeDisplay() {
 #ifdef _DEBUG_INO
   Serial.println("renderTimeDisplay");
 #endif
-  //Serial.println("before Client update");
 
-  // Serial.println("after Client update");
   // The formattedDate comes with the following format:
   // 2018-05-28T16:00:13Z
   // We need to extract date and time
   formattedDate = timeClient.getFormattedDate();
-  //Serial.println(formattedDate);
-  viewPorts.pushViewPort(0, 0, TFT_WIDTH, 55, VP_RestorePrev);
-
   int splitT = formattedDate.indexOf("T");
   dateStamp = formattedDate.substring(0, splitT);
-#ifdef _DEBUG_INO
-  Serial.println("renderTimeDisplay() : dateStamp = formattedDate.substring(0, splitT)");
-  Serial.println("renderTimeDisplay() : dateStamp = " + dateStamp);
-#endif
+  timeStamp = formattedDate.substring(splitT + 1, formattedDate.length() - 1);
+  curTime = timeStamp.substring(0, 5);  // Time
+
   if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+    if (opt )
+      viewPorts.pushViewPort(vpX, vpY, TFT_WIDTH, 55, VP_RestorePrev);  // define new View Port
     tft.setTextColor(TFT_ORANGE, TFT_BLACK);
-    tft.setTextFont(2);
-    tft.setCursor(6, 42);
-#ifdef _DEBUG_INO
-    //dateStamp = "2023-12-20";
-    Serial.println("renderTimeDisplay() :before: tft.println(dateStamp) dateStamp = " + dateStamp);
-#endif
-    // tft.println(dateStamp); // Date crash is here
-    tft.drawString(dateStamp, 6, 42, 2);
-#ifdef _DEBUG_INO
-    Serial.println("renderTimeDisplay() :before: tft.setTextColor(TFT_WHITE, TFT_BLACK)");
-#endif
+    tft.drawString(dateStamp, 6, 42, 2);  // Draw date
+
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
 
-#ifdef _DEBUG_INO
-    Serial.println("renderTimeDisplay() :before: timeStamp = formattedDate.substring(splitT + 1, formattedDate.length() - 1) ");
-#endif
-    timeStamp = formattedDate.substring(splitT + 1, formattedDate.length() - 1);
-#ifdef _DEBUG_INO
-    Serial.println("renderTimeDisplay() : timeStamp = formattedDate.substring(splitT + 1, formattedDate.length() - 1)");
-    Serial.println("renderTimeDisplay() : timeStamp = " + timeStamp);
-#endif
-    curTime = timeStamp.substring(0, 5);  // Time
-#ifdef _DEBUG_INO
-    Serial.println("renderTimeDisplay() : curTime = timeStamp.substring(0, 5)");
-    Serial.println("renderTimeDisplay() : curTime = " + curTime);
-#endif
-    if (curTime != dispTime) {
-#ifdef _DEBUG_INO
-      Serial.println("renderTimeDisplay() :if (curTime != dispTime)");
-#endif
-      dispTime = curTime;
-      tft.fillRect(1, 1, TFT_WIDTH, 32, TFT_BLACK);
+    if (curTime != mdispTime) {  // Need to update the Time display
+
+      mdispTime = curTime;
+      tft.fillRect(0, 0, TFT_WIDTH, 32, TFT_BLACK);  // was 1,1
       tft.setFreeFont(&Orbitron_Light_32);
 
 #define SEC_STR_WIDTH 19
 #define MAX_HOUR_WIDTH 111
-      //Serial.println(tft.textWidth(dispTime));
-      curY = tft.textWidth(dispTime);  // No Space for seconds display
-      showSec = curY > MAX_HOUR_WIDTH ? FALSE : SEC_STR_WIDTH;
 
-      tft.setCursor((TFT_WIDTH - tft.textWidth(dispTime) - showSec) / 2, 32);
-      tft.print(dispTime);
+      mcurY = tft.textWidth(mdispTime);  // No Space for seconds display
+      mshowSec = mcurY > MAX_HOUR_WIDTH ? FALSE : SEC_STR_WIDTH;
 
-      curX = tft.getCursorX();
-      curY = tft.getCursorY();
+      tft.setCursor((TFT_WIDTH - tft.textWidth(mdispTime) - mshowSec) / 2, 32);
+      tft.print(mdispTime);
+
+      mcurX = tft.getCursorX();
+      mcurY = tft.getCursorY();
     }
-    //Serial.println("Show sec" + String(showSec));
-    if (showSec)  // There is enough width to show the seconds digits
-    {
-#ifdef _DEBUG_INO
-      Serial.println("renderTimeDisplay() : if ( showSec)");
-#endif
-      //Serial.println("in the if Show sec");
-      curTime = timeStamp.substring(6, 8);  // Seconds
-      if (curTime != dispSeconds) {
-#ifdef _DEBUG_INO
-        Serial.println("renderTimeDisplay() : if ( showSec) if (curTime != dispSeconds) ");
-#endif
-        dispSeconds = curTime;
-        tft.setTextFont(2);
 
-        tft.setCursor(curX, curY - 14);
-        //Serial.println(tft.fontHeight());
-        //Serial.println( tft.textWidth(t));
-        tft.print(":" + dispSeconds);
+    if (mshowSec)  // There is enough width to show the seconds digits
+    {
+      curTime = timeStamp.substring(6, 8);  // Seconds
+      if (curTime != mdispSeconds) {
+        mdispSeconds = curTime;
+        tft.drawString(":" + mdispSeconds, mcurX, mcurY - 14, 2);  // Draw date
       }
     }
-#ifdef _DEBUG_INO
-    Serial.println("renderTimeDisplay() : before popViewPOrt() ");
-#endif
-    viewPorts.popViewPort();
+
+    if (opt )
+      viewPorts.popViewPort();
     xSemaphoreGive(mTFTMutex);
   }
 }
@@ -575,9 +566,13 @@ void RightBtn::onStartLongPress() {
 #endif
 
 #define Y_ViewPort 87
-  vTaskSuspend(hAnimationTaskCore);
-  viewPorts.pushViewPort(0, Y_ViewPort, TFT_WIDTH, TFT_HEIGHT - Y_ViewPort, VP_SaveUnder);
-
+  disableMainSCRInfo();
+  if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+    viewPorts.pushViewPort(0, Y_ViewPort, TFT_WIDTH, TFT_HEIGHT - Y_ViewPort, VP_SaveUnder);
+    // Release the mutex when done
+    xSemaphoreGive(mTFTMutex);
+  }
+  
 }
 
 
@@ -587,8 +582,13 @@ void RightBtn::onEndLongPress() {
 #ifdef _DEBUG_INO
   Serial.println("Button 2 longPress stop");
 #endif
-  viewPorts.popViewPort();
-  vTaskResume(hAnimationTaskCore);
+if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+    viewPorts.popViewPort();
+    // Release the mutex when done
+    xSemaphoreGive(mTFTMutex);
+  }
+  
+  enableMainSCRInfo();
 }  // longPressStop2
 
 
@@ -606,7 +606,6 @@ void chkBtns() {
 ///////////////////////////////////////////////////////////
 //
 void loop() {
-
 }
 
 
@@ -664,7 +663,7 @@ int isMarketOpen() {
 
 ///////////////////////////////////////////////////////////
 //
-void renderStocksData() {
+void StockRendererTask::renderStocksData() {
   static int notTheFirstTime = FALSE;
   static int wasMarketOpen = -1;
   int isMarketOpenNow;
@@ -675,19 +674,19 @@ void renderStocksData() {
 
   isMarketOpenNow = isMarketOpen();
 #ifdef _DEBUG_INO
-Serial.println("renderStocksData() isMarketOpen:" + String(isMarketOpenNow));
+  Serial.println("renderStocksData() isMarketOpen:" + String(isMarketOpenNow));
 #endif
-  if (isMarketOpenNow != wasMarketOpen) {
+  if (mMarketOpen != wasMarketOpen) {
     if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
-      if (isMarketOpenNow)
+      if (mMarketOpen)
         drawOpenMarketHeaders();
       else
-        tft.fillRect(StocksXPos, StocksYPos + 50, TFT_WIDTH - StocksXPos, TFT_HEIGHT - (StocksYPos + 50), TFT_BLACK);
-      wasMarketOpen = isMarketOpenNow;
+        tft.fillRect(StocksXPos, StocksYPos + 53, TFT_WIDTH - StocksXPos, TFT_HEIGHT - (StocksYPos + 53), TFT_BLACK);
+      wasMarketOpen = mMarketOpen;
       xSemaphoreGive(mTFTMutex);
     }
   }
-  if (!isMarketOpenNow && notTheFirstTime)
+  if (!mMarketOpen && notTheFirstTime)
     return;
 
   // Serial.println("Inside renderStocksData,  isMarketOpen()" + String(isMarketOpen()) + " notThefirst time" + String(notTheFirstTime));
@@ -710,7 +709,7 @@ Serial.println("renderStocksData() isMarketOpen:" + String(isMarketOpenNow));
       tft.print("$" + ptcCurrent.substring(0, 6));
       //tft.setCursor(StocksXPos , StocksYPos + 58);
       //tft.print("Day :");
-      if (isMarketOpenNow) {
+      if (mMarketOpen) {
         tft.setTextFont(1);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
         tft.setCursor(StocksXPos + 12, StocksYPos + 79);
