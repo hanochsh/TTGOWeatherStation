@@ -69,23 +69,33 @@ EspEventType EspTimeEvents::getEventTypeToSend(EspTimeEvent *event)
         return NoEvent;
     }
 
-    if ((curHour  >= event->mStartHour) && (curMinute >= event->mStartMinut ) &&
-        (curHour <= endHour) && (  curMinute <= endMinute))
+    //if ((curHour  >= event->mStartHour) && (curMinute >= event->mStartMinut ) &&
+     //   (curHour <= endHour) && (  curMinute <= endMinute))
+        if (((curHour > event->mStartHour) || ((curHour == event->mStartHour) && (curMinute >= event->mStartMinut) ))
+            && ((curHour < endHour) || ((curHour == endHour) && (curMinute <= endMinute))))
+            
+
     { // within Range of the event
-        Serial.println("EspTimeEvents::getEventTypeToSend:  Within Rang");
+            //Serial.println("EspTimeEvents::getEventTypeToSend: (After start): " + String(((curHour > event->mStartHour) || ((curHour == event->mStartHour) && (curMinute >= event->mStartMinut)))));
+            //Serial.println("EspTimeEvents::getEventTypeToSend: (before end): " + String(((curHour < endHour)) || ((curHour == endHour) && (curMinute <= endMinute))));
+        //Serial.println("EspTimeEvents::getEventTypeToSend:  Within Rang");
         if (event->mLastSent == NoEvent) // This is the first send
             return event->mLastSent = event->mStartEvent;
+        
 
         if ((event->mLastSent == event->mStartEvent) &&// already send Start, sould check if end arrived
             ((curHour == endHour) && (curMinute == endMinute)))
         {
-            Serial.println("EspTimeEvents::getEventTypeToSend: END Event should be sent");
+            //Serial.println("EspTimeEvents::getEventTypeToSend: END Event should be sent");
             return event->mLastSent = event->mEndEvent; // sending end event
         }
 
     }
-   
-    Serial.println("EspTimeEvents::getEventTypeToSend:  Returning NoEvent");
+    //Serial.println("EspTimeEvents::getEventTypeToSend: (After start): " + String(((curHour > event->mStartHour) || ((curHour == event->mStartHour) && (curMinute >= event->mStartMinut)))));
+    //Serial.println("EspTimeEvents::getEventTypeToSend: (before end): " + String(((curHour < endHour)) || ((curHour == endHour) && (curMinute <= endMinute))));
+   // Serial.println("EspTimeEvents::getEventTypeToSend: (curHour <= endHour): " + String((curHour <= endHour)));
+   // Serial.println("EspTimeEvents::getEventTypeToSend: (curMinute <= endMinute): " + String((curMinute <= endMinute)));
+    //Serial.println("EspTimeEvents::getEventTypeToSend:  Returning NoEvent");
     if (event->mLastSent == event->mEndEvent) // End event was already send
       return event->mLastSent = NoEvent;
 

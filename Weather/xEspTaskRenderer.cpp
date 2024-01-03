@@ -1,8 +1,5 @@
 #include <Arduino.h>
-//#include <task.h>
-#define configUSE_NEWLIB_REENTRANT 0
-//#include <Arduino_FreeRTOS.h>
-//#include <freertos/FreeRTOS.h>
+
 #include "xEspTaskRenderer.h"
 
 //////////////////////////////////////////////

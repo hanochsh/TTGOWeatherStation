@@ -9,23 +9,17 @@
 #include "DebugPrefTools.h"
 #include "EspButton.h"
 #include "xEspTaskRenderer.h"
-
-#include "Orbitron_Medium_20.h"
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <HTTPClient.h>
 #include "ViewPortsStack.h"
+#include "EspColors.h"
+#include "EspUtils.h"
+#include "EspIcons.h"
 //#include "Captive_Portal_WiFi_Manager.h"
 TFT_eSPI tft = TFT_eSPI();  // Invoke custom library
 
-#define TFT_GREY 0x5AEB
-#define lightblue 0x01E9
-#define darkred 0xA041
-#define blue 0x5D9B
-#ifndef TRUE
-#define TRUE 1
-#define FALSE 0
-#endif
+
 
 const int pwmFreq = 5000;
 const int pwmResolution = 8;
@@ -38,34 +32,29 @@ String town = "Tel Aviv";                     //EDDIT
 String Country = "IL";                        //EDDIT
 const String endpoint = "http://api.openweathermap.org/data/2.5/weather?q=" + town + "," + Country + "&units=metric&APPID=";
 //const String stockUrl = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=PTC&apikey=CQ4BMVCC56VEWRRJ";
-const String ptcStockUrl = "https://finnhub.io/api/v1/quote?symbol=PTC&token=clj68h9r01qok8f2vjf0clj68h9r01qok8f2vjfg";
+const char *ptcStockUrl = "https://finnhub.io/api/v1/quote?symbols=PTC,APPL&token=clj68h9r01qok8f2vjf0clj68h9r01qok8f2vjfg";
+// from: https://algotrading101.com/learn/iex-api-guide/:  /tops/last/'PTC,NFLX'
+// https://cloud.iexapis.com/v1/stock/PTC/chart?token=xxx
+// https://cloud.iexapis.com/v1//tops/last/'PTC,NFLX'
+// https://cloud.iexapis.com/v1/tops/last?symbols=AAPL&token=pk_9821757254014256a6f2ef404020db6b
 // http://api.openweathermap.org/data/2.5/weather?q=Tel Aviv,IL&units=metric&APPID=91697f781be1daa54d31d7b4bcb75e5b
-const String key = "91697f781be1daa54d31d7b4bcb75e5b"; /*EDDITTTTTTTTTTTTTTTTTTTTTTTT */
+const char *openweathermapKey = "91697f781be1daa54d31d7b4bcb75e5b";
 
-// Weather Icons Externs
-extern const uint16_t *getWeather01d();
-extern const uint16_t *getWeather01n();
-extern const uint16_t *getWeather02d();
-extern const uint16_t *getWeather02n();
-extern const uint16_t *getWeather03d();
-extern const uint16_t *getWeather03n();
-extern const uint16_t *getWeather04d();
-extern const uint16_t *getWeather04n();
-extern const uint16_t *getWeather09d();
-extern const uint16_t *getWeather09n();
-extern const uint16_t *getWeather10d();
-extern const uint16_t *getWeather10n();
-extern const uint16_t *getWeather11d();
-extern const uint16_t *getWeather11n();
-extern const uint16_t *getWeather13d();
-extern const uint16_t *getWeather13n();
-extern const uint16_t *getWeather50d();
-extern const uint16_t *getWeather50n();
-extern unsigned short *getAnimFrame(int frame);
 
-extern "C" const unsigned short *getPTCIcon32x32();
-extern "C" const unsigned short *getPTCIcon48x48();
 
+
+
+
+
+//https://api.openweathermap.org/data/2.5/forecast?lat=32.0833&lon=34.8&units=metric&appid=91697f781be1daa54d31d7b4bcb75e5b
+//https://api.openweathermap.org/data/2.5/forecast?q=Tel Aviv,IL&units=metric&APPID=91697f781be1daa54d31d7b4bcb75e5b
+
+//https://api.weatherbit.io/v2.0/forecast/daily?city=TelAviv,IL&key=f846dc6a4520446f8d6861f4d4b7bcb2
+
+
+extern const GFXfont *getOrbitonFontMed20();
+extern "C" const GFXfont *getOrbitronMedium8Font();
+extern "C" const GFXfont *getOrbitronLight6Font();
 
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
@@ -111,9 +100,17 @@ CheckButtonsTask checkBtnsTask;
 EspTimeEvents espTimeEvents;
 MsgReciverTask espMsgsReciver;
 
+EspButton *getRightBtn() {
+  return &rightBtn;
+}
 SemaphoreHandle_t getWifiMutex() {
   return mWifiMutex;
 }
+
+SemaphoreHandle_t getTFTMutex() {
+  return mTFTMutex;
+}
+
 
 QueueHandle_t getMessageQueue() {
   return messageQueue;
@@ -259,19 +256,7 @@ void onRgtBtnDPress() {
 
 
 
-///////////////////////////////////////////////////////////
-//
-void drawOpenMarketHeaders() {
-  tft.setTextFont(2);
-  tft.setTextColor(TFT_ORANGE, TFT_BLACK);
-  tft.setCursor(StocksXPos, StocksYPos + 60);
-  tft.print("Day");
-  tft.setTextFont(1);
-  tft.setCursor(StocksXPos, StocksYPos + 79);
-  tft.print("H: ");
-  tft.setCursor(StocksXPos, StocksYPos + 89);
-  tft.print("L: ");
-}
+
 
 ///////////////////////////////////////////////////////////
 //
@@ -282,18 +267,9 @@ void setupBtns() {
 
 
 
-///////////////////////////////////////////////////////////
-//
-void MainTimeRendererTask::renderTask(int opt, void *data) {
 
-  renderTimeDisplay(opt, 0, 0);
-}
 
-///////////////////////////////////////////////////////////
-//
-void StockRendererTask::renderTask(int opt, void *data) {
-  renderStocksData();
-}
+
 
 ///////////////////////////////////////////////////////////
 //
@@ -308,6 +284,75 @@ void AnimationRendererTask::renderTask(int opt, void *data) {
   mFrame++;
   if (mFrame >= 10)
     mFrame = 0;
+}
+
+///////////////////////////////////////////////////////////
+//
+void MainTimeRendererTask::renderTimeDisplay(int opt, int vpX, int vpY) {
+  static String lastDate = "";
+  String curTime = "";
+  String dateStamp;
+  String formattedDate;
+  String timeStamp;
+#ifdef _DEBUG_INO
+  Serial.println("renderTimeDisplay");
+#endif
+
+  // The formattedDate comes with the following format:
+  // 2018-05-28T16:00:13Z
+  // We need to extract date and time
+  formattedDate = timeClient.getFormattedDate();
+  int splitT = formattedDate.indexOf("T");
+  dateStamp = formattedDate.substring(0, splitT);
+  timeStamp = formattedDate.substring(splitT + 1, formattedDate.length() - 1);
+  curTime = timeStamp.substring(0, 5);  // Time
+
+  if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+    if (opt)
+      viewPorts.pushViewPort(vpX, vpY, TFT_WIDTH, 55, VP_RestorePrev);  // define new View Port
+    if (lastDate != dateStamp) {
+      tft.setTextColor(TFT_ORANGE, TFT_BLACK);
+      //tft.setFreeFont(getOrbitronLight6Font());
+      tft.drawString(dateStamp, 6, 42, 2);  // Draw date
+      lastDate = dateStamp;
+    }
+
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+    if (curTime != mdispTime) {  // Need to update the Time display
+
+      mdispTime = curTime;
+      tft.fillRect(0, 0, TFT_WIDTH, 32, TFT_BLACK);  // was 1,1
+      tft.setFreeFont(&Orbitron_Light_32);
+// was 19
+#define SEC_STR_WIDTH 20
+#define MAX_HOUR_WIDTH 111
+
+      mcurY = tft.textWidth(mdispTime);  // No Space for seconds display
+      mshowSec = mcurY > MAX_HOUR_WIDTH ? FALSE : SEC_STR_WIDTH;
+
+      tft.setCursor((TFT_WIDTH - tft.textWidth(mdispTime) - mshowSec) / 2, 32);
+      tft.print(mdispTime);
+
+      mcurX = tft.getCursorX();
+      mcurY = tft.getCursorY();
+    }
+
+    if (mshowSec)  // There is enough width to show the seconds digits
+    {
+      curTime = timeStamp.substring(6, 8);  // Seconds
+      if (curTime != mdispSeconds) {
+        mdispSeconds = curTime;
+        tft.setFreeFont(getOrbitronLight6Font());
+        tft.fillRect(mcurX, mcurY - 13, SEC_STR_WIDTH, 15, TFT_BLACK);  // was 1,1
+        tft.drawString(":" + mdispSeconds, mcurX -2, mcurY - 13);  // -14, 2);  // Draw sec
+      }
+    }
+
+    if (opt)
+      viewPorts.popViewPort();
+    xSemaphoreGive(mTFTMutex);
+  }
 }
 
 ///////////////////////////////////////////////////////////
@@ -332,19 +377,22 @@ void MsgReciverTask::renderTask(int opt, void *data) {
   int recEvent = -1;
 
   if (xQueueReceive(getMessageQueue(), &recEvent, 0) == pdTRUE) {
-    Serial.print("MsgReciverTask::renderTask received data from queue: ");
-    Serial.println(recEvent);
+    //Serial.print("MsgReciverTask::renderTask received data from queue: ");
+    // Serial.println(recEvent);
 
     switch (recEvent) {
       case StopAnimationEvnt:
+        Serial.println("MsgReciverTask::renderTask received StopAnimationEvnt");
         animRenderer.disable();
         //vTaskSuspend(hAnimationTaskCore);
         break;
       case ResumeAnimationEvnt:
+        Serial.println("MsgReciverTask::renderTask received ResumeAnimationEvnt");
         animRenderer.enable();
         //vTaskResume(hAnimationTaskCore);
         break;
       case StartNightEvnt:
+        Serial.println("MsgReciverTask::renderTask received StartNightEvnt");
         ledcWrite(pwmLedChannelTFT, 1);
         disableMainSCRInfo();
         if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
@@ -355,8 +403,9 @@ void MsgReciverTask::renderTask(int opt, void *data) {
         timeRenderer.disableMainScreen();
         break;
       case EndNightEvnt:
+        Serial.println("MsgReciverTask::renderTask received EndNightEvnt");
         ledcWrite(pwmLedChannelTFT, getCurBckLgt());
-        
+
         if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
           viewPorts.popViewPort();
           // Release the mutex when done
@@ -365,16 +414,24 @@ void MsgReciverTask::renderTask(int opt, void *data) {
         timeRenderer.enableMainScreen();
         enableMainSCRInfo();
         break;
-        case MarketOpenEvnt:
+      case MarketOpenEvnt:
         Serial.println("MsgReciverTask::renderTask received MarketOpenEvnt");
-        stockRenderer.setMarketOpen(true);
+        //stockRenderer.setMarketWasOpen(false);
+        //stockRenderer.setMarketOpen(true);
+        stockRenderer.verifyCurrentMarketStatus();
         break;
-        case MarketCloseEvnt:
+      case MarketCloseEvnt:
         Serial.println("MsgReciverTask::renderTask received MarketCloseEvnt");
-        stockRenderer.setMarketOpen(false);
+        //stockRenderer.setMarketWasOpen();  // will set what was the market status
+        //stockRenderer.setMarketOpen(false);
+        stockRenderer.verifyCurrentMarketStatus();
         break;
-
+      case GetTickerPeersEvnt:
+        Serial.println("MsgReciverTask::renderTask received GetTickerPeersEvnt");
+        stockRenderer.getPeers();
+        break;
     }
+    Serial.println("MsgReciverTask::renderTask: done handleing last event");
   }
 }
 
@@ -409,14 +466,14 @@ void setup(void) {
 
   tft.setSwapBytes(true);
 
-  tft.setTextColor(TFT_ORANGE, TFT_BLACK);
+  tft.setTextColor(TFT_ORANGE, TFT_BLACK, 1);
   tft.setCursor(TempXPos, TempYPos + 24, 2);
   tft.println("Humidity");
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setFreeFont(&Orbitron_Medium_20);
+  tft.setFreeFont((GFXfont *)getOrbitonFontMed20());
   tft.setCursor(6, 80);
   tft.println(town);
-
+  tft.unloadFont();  // Remove the font to recover memory used
   //drawCurBckLgt();
   tft.drawLine(TempXPos + TempXWid + 1, 150, TempXPos + TempXWid + 1, 240, TFT_GREY);
 
@@ -429,8 +486,10 @@ void setup(void) {
 
   delay(500);
   espTimeEvents.createCoreTask(&hEspTimeEventsTaskCore, (void *)&timeClient);
+
   timeRenderer.createCoreTask(&hRegularTimeDisplayTaskCore);
   stockRenderer.createCoreTask(&hStockUpdateTask);
+  stockRenderer.setTFT(&tft);
   weatherRenderer.createCoreTask(&hWeatherUpdateTask);
   checkBtnsTask.createCoreTask(&hBottonsCheck);
   animRenderer.createCoreTask(&hAnimationTaskCore);
@@ -467,77 +526,6 @@ void animateImageFrame() {
 
 
 
-
-///////////////////////////////////////////////////////////
-//
-void MainTimeRendererTask::renderTimeDisplay(int opt, int vpX, int vpY) {
-  String curTime = "";
-  String dateStamp;
-  String formattedDate;
-  String timeStamp;
-#ifdef _DEBUG_INO
-  Serial.println("renderTimeDisplay");
-#endif
-
-  // The formattedDate comes with the following format:
-  // 2018-05-28T16:00:13Z
-  // We need to extract date and time
-  formattedDate = timeClient.getFormattedDate();
-  int splitT = formattedDate.indexOf("T");
-  dateStamp = formattedDate.substring(0, splitT);
-  timeStamp = formattedDate.substring(splitT + 1, formattedDate.length() - 1);
-  curTime = timeStamp.substring(0, 5);  // Time
-
-  if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
-    if (opt )
-      viewPorts.pushViewPort(vpX, vpY, TFT_WIDTH, 55, VP_RestorePrev);  // define new View Port
-    tft.setTextColor(TFT_ORANGE, TFT_BLACK);
-    tft.drawString(dateStamp, 6, 42, 2);  // Draw date
-
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-
-    if (curTime != mdispTime) {  // Need to update the Time display
-
-      mdispTime = curTime;
-      tft.fillRect(0, 0, TFT_WIDTH, 32, TFT_BLACK);  // was 1,1
-      tft.setFreeFont(&Orbitron_Light_32);
-
-#define SEC_STR_WIDTH 19
-#define MAX_HOUR_WIDTH 111
-
-      mcurY = tft.textWidth(mdispTime);  // No Space for seconds display
-      mshowSec = mcurY > MAX_HOUR_WIDTH ? FALSE : SEC_STR_WIDTH;
-
-      tft.setCursor((TFT_WIDTH - tft.textWidth(mdispTime) - mshowSec) / 2, 32);
-      tft.print(mdispTime);
-
-      mcurX = tft.getCursorX();
-      mcurY = tft.getCursorY();
-    }
-
-    if (mshowSec)  // There is enough width to show the seconds digits
-    {
-      curTime = timeStamp.substring(6, 8);  // Seconds
-      if (curTime != mdispSeconds) {
-        mdispSeconds = curTime;
-        tft.drawString(":" + mdispSeconds, mcurX, mcurY - 14, 2);  // Draw date
-      }
-    }
-
-    if (opt )
-      viewPorts.popViewPort();
-    xSemaphoreGive(mTFTMutex);
-  }
-}
-
-
-
-
-
-
-
-
-
 ///////////////////////////////////////////////////////////
 //
 void LeftBtn::onDoubleClick() {
@@ -564,15 +552,15 @@ void RightBtn::onStartLongPress() {
 #ifdef _DEBUG_INO
   Serial.println("RightBtn::onStartLongPress");
 #endif
-
-#define Y_ViewPort 87
+#define Y_ViewPort 60
   disableMainSCRInfo();
   if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
-    viewPorts.pushViewPort(0, Y_ViewPort, TFT_WIDTH, TFT_HEIGHT - Y_ViewPort, VP_SaveUnder);
-    // Release the mutex when done
+    viewPorts.pushViewPort(0, Y_ViewPort, TFT_WIDTH, TFT_HEIGHT - Y_ViewPort, VP_SaveUnder | VP_WithFram);
     xSemaphoreGive(mTFTMutex);
+    stockRenderer.renderPeersInViewPort();
+    // Release the mutex when done
   }
-  
+#undef Y_ViewPort
 }
 
 
@@ -582,14 +570,65 @@ void RightBtn::onEndLongPress() {
 #ifdef _DEBUG_INO
   Serial.println("Button 2 longPress stop");
 #endif
-if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+  if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
     viewPorts.popViewPort();
+
     // Release the mutex when done
     xSemaphoreGive(mTFTMutex);
   }
-  
+
   enableMainSCRInfo();
 }  // longPressStop2
+
+///////////////////////////////////////////////////////////
+//
+void LeftBtn::onStartLongPress() {
+#ifdef _DEBUG_INO
+  Serial.println("LeftBtn::onStartLongPress");
+#endif
+
+#define Y_ViewPort 60
+  disableMainSCRInfo();
+  if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+    viewPorts.pushViewPort(0, Y_ViewPort, TFT_WIDTH, TFT_HEIGHT - Y_ViewPort, VP_SaveUnder | VP_WithFram);
+
+#define lOffset 4
+
+    tft.setCursor(lOffset, lOffset);  // Set cursor at top left of screen
+    tft.setFreeFont(getOrbitronMedium8Font());
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.println("Tempretures:");
+    tft.setCursor(lOffset, lOffset + tft.getCursorY());
+    tft.println("^IXIC 15232.43");
+    tft.setCursor(lOffset, lOffset + tft.getCursorY());
+    tft.println("PTC 172.3");
+    tft.setCursor(lOffset, lOffset + tft.getCursorY());
+    tft.println("Autodesk 322.3");
+    tft.setCursor(lOffset, lOffset + tft.getCursorY());
+    tft.println("Ansys 172.3");
+    tft.unloadFont();  // Remove the font to recover memory used
+    // Release the mutex when done
+    xSemaphoreGive(mTFTMutex);
+  }
+}
+
+
+///////////////////////////////////////////////////////////
+//
+void LeftBtn::onEndLongPress() {
+#ifdef _DEBUG_INO
+  Serial.println("LeftBtn longPress stop");
+#endif
+  if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+    viewPorts.popViewPort();
+
+    // Release the mutex when done
+    xSemaphoreGive(mTFTMutex);
+  }
+
+  enableMainSCRInfo();
+}  // longPressStop2
+
 
 
 
@@ -608,117 +647,82 @@ void chkBtns() {
 void loop() {
 }
 
-
 ///////////////////////////////////////////////////////////
 //
-int getJsonFromUrl(String url, JsonDocument *josn)
+int getPayloadFromUrl(String url, String *payload)
 
 {
   int status = FALSE;
+
 #ifdef _DEBUG_INO
-  Serial.println("getJsonFromUrl");
+  Serial.println("getPayloadFromUrl : " + url);
 #endif
+
+
   if (xSemaphoreTake(mWifiMutex, portMAX_DELAY)) {
+    //Serial.println("getPayloadFromUrl : passed the Semaphore check");
     if ((WiFi.status() == WL_CONNECTED)) {  //Check the current connection status
-      String payload = "";                  //whole json
+      *payload = "";                        //whole String
 
       HTTPClient http;
-
+      //Serial.println("getPayloadFromUrl : before http.begin");
       http.begin(url);  //Specify the URL
-
+      //Serial.println("getPayloadFromUrl : after http.begin");
       if (http.GET() > 0) {  //Make the request and Check for the returning code
                              // SUCCESS
-        payload = http.getString();
-        //Serial.println(payload);
 
-        deserializeJson(*josn, payload.c_str());
+        //Serial.println("getPayloadFromUrl : GET > 0");
+        *payload = http.getString();
+        //Serial.println(String("Payload :") + *payload);
 
         status = TRUE;
-      }
+      }  // if get
 
       http.end();  //Free the resources
-    }
+
+    }  // if Wifi status
     // Release the mutex when done
+
     xSemaphoreGive(mWifiMutex);
-  }
+  }  //if wifiMutex
+
   return status;
 }
 
 ///////////////////////////////////////////////////////////
 //
-int isMarketOpen() {
-
-  int today = timeClient.getDay();
-  //Serial.println("isMarketOpen today is " + String(today));
-  if (today == 0 || today == 6)
-    return FALSE;
-
-  int hour = timeClient.getHours();
-  //Serial.println("isMarketOpen hour is " + String(hour));
-  if (hour < 16 || ((hour >= 23) && (timeClient.getMinutes() > 30)))
-    return FALSE;
-
-  return TRUE;
+int getJsonFromUrl(String url, JsonDocument *josn) {
+  String payload;
+  if (getPayloadFromUrl(url, &payload)) {
+    deserializeJson(*josn, payload.c_str());
+    return true;
+  }
+  return false;
 }
 
 ///////////////////////////////////////////////////////////
 //
-void StockRendererTask::renderStocksData() {
-  static int notTheFirstTime = FALSE;
-  static int wasMarketOpen = -1;
-  int isMarketOpenNow;
-#ifdef _DEBUG_INO
-  Serial.println("renderStocksData()");
-#endif
-  StaticJsonDocument<250> doc;
+String buildQuaryUrl(String *outBuff, ...) {
+  va_list args;
+  va_start(args, outBuff);
+  char *value = NULL;
+  *outBuff = "";
+  while (NULL != (value = va_arg(args, char *)))
+    *outBuff += value;
 
-  isMarketOpenNow = isMarketOpen();
-#ifdef _DEBUG_INO
-  Serial.println("renderStocksData() isMarketOpen:" + String(isMarketOpenNow));
-#endif
-  if (mMarketOpen != wasMarketOpen) {
-    if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
-      if (mMarketOpen)
-        drawOpenMarketHeaders();
-      else
-        tft.fillRect(StocksXPos, StocksYPos + 53, TFT_WIDTH - StocksXPos, TFT_HEIGHT - (StocksYPos + 53), TFT_BLACK);
-      wasMarketOpen = mMarketOpen;
-      xSemaphoreGive(mTFTMutex);
-    }
-  }
-  if (!mMarketOpen && notTheFirstTime)
-    return;
+  va_end(args);
 
-  // Serial.println("Inside renderStocksData,  isMarketOpen()" + String(isMarketOpen()) + " notThefirst time" + String(notTheFirstTime));
+  return *outBuff;
+}
 
-  if (getJsonFromUrl(ptcStockUrl, &doc)) {
-    notTheFirstTime = TRUE;
-    String ptcCurrent = doc["c"];
-    String ptcDayHigh = doc["h"];
-    String ptcDayLow = doc["l"];
-    String ptcDayChange = doc["d"];
-
-
-    if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
-      tft.setCursor(StocksXPos, StocksYPos + 40);
-      tft.setTextFont(2);
-      if (ptcDayChange.substring(0, 1) == "-")
-        tft.setTextColor(TFT_RED, TFT_BLACK);
-      else
-        tft.setTextColor(TFT_GREEN, TFT_BLACK);
-      tft.print("$" + ptcCurrent.substring(0, 6));
-      //tft.setCursor(StocksXPos , StocksYPos + 58);
-      //tft.print("Day :");
-      if (mMarketOpen) {
-        tft.setTextFont(1);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.setCursor(StocksXPos + 12, StocksYPos + 79);
-        tft.print("$" + ptcDayHigh.substring(0, 6));
-        tft.setCursor(StocksXPos + 12, StocksYPos + 89);
-        tft.print("$" + ptcDayLow.substring(0, 6));
-      }
-      //Serial.println(StocksYPos + 89);
-      xSemaphoreGive(mTFTMutex);
+///////////////////////////////////////////////////////////
+//
+void removeCharFromString(String &str, char charToRemove) {
+  // Iterate through the string and remove the specified character
+  for (int i = 0; i < str.length(); i++) {
+    if (str[i] == charToRemove) {
+      str.remove(i, 1);
+      i--;  // Adjust index after removal
     }
   }
 }
@@ -730,7 +734,8 @@ void renderWeatherData() {
 #ifdef _DEBUG_INO
   Serial.println("renderWeatherData()");
 #endif
-  if (getJsonFromUrl(endpoint + key, &doc)) {
+
+  if (getJsonFromUrl(endpoint + openweathermapKey, &doc)) {
 
     String temp = doc["main"]["temp"];
     String humi = doc["main"]["humidity"];
@@ -747,11 +752,12 @@ void renderWeatherData() {
       drwWeatherIcon(weatherIcon);
 
       // Draw Tempreture
-      tft.setFreeFont(&Orbitron_Medium_20);
-      tft.fillRect(TempXPos, TempYPos, TempXWid, 20, TFT_BLACK);
-      tft.setCursor(TempXPos, TempYPos + 18);
+      //tft.setFreeFont(&Orbitron_Medium_20);
+      tft.setFreeFont(getOrbitronMedium8Font());
+      tft.fillRect(TempXPos, TempYPos, TempXWid, 22, TFT_BLACK);  // 20->22
+      tft.setCursor(TempXPos + 7, TempYPos + 17);                 // +18
       //temp = "88.8";
-      tft.setTextColor(TFT_WHITE, TFT_BLACK);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK, true);  // The true works only for smooth fonts
       tft.print(temp.substring(0, 4));
       int x, y;
       x = tft.getCursorX();
@@ -759,8 +765,9 @@ void renderWeatherData() {
       tft.drawCircle(x + 3, y - 12, 2, TFT_WHITE);  // Degrees circle
       // Draw Humidity value
       tft.fillRect(TempXPos, TempYPos + 46, TempXWid, 20, TFT_BLACK);
-      tft.setCursor(TempXPos, TempYPos + 60);
+      tft.setCursor(TempXPos + 7, TempYPos + 58);  //60
       tft.println(humi + "%");
+      tft.unloadFont();  // Remove the font to recover memory used
       xSemaphoreGive(mTFTMutex);
     }  // close Mutex
 

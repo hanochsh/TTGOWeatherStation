@@ -15,12 +15,14 @@ public:
 	EspButton(byte pinBut) { 
 		mGPIO = pinBut;
 		mBtn = new OneButton(pinBut, true);
+		//mDown = false;
 		//mLastTStamp = -1;
 		//mLastState = -1; 
 	}
 	void setup();
 	//int chkButton();
 	void loop() { mBtn->tick(); }
+	int getIsDown() { return LOW == digitalRead(mGPIO); }
 	//void tick();
 private:
 	virtual void onSingleClick()    {}
@@ -35,6 +37,7 @@ private:
 
 	OneButton* mBtn;
 	byte mGPIO;
+	int  mDown;
 	/*byte  mLastState;
 	unsigned long mLastTStamp;*/
 };
@@ -49,8 +52,8 @@ public:
 private:
 	void onSingleClick() {}
 	void onDoubleClick();
-	void onStartLongPress() {}
-	void onEndLongPress() {}
+	void onStartLongPress();
+	void onEndLongPress();
 
 	int mInv;
 };

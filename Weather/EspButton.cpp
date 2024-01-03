@@ -73,6 +73,7 @@ void EspButton::onDoubleClickCB(void *pVThis)
 void EspButton::onStartLongPresCB(void *pVThis)
 {
     EspButton* pThis = (EspButton*)pVThis;
+    //pThis->mDown = true;
     pThis->onStartLongPress();
 }
 
@@ -81,6 +82,7 @@ void EspButton::onStartLongPresCB(void *pVThis)
 void EspButton::onEndLongPressCB(void *pVThis)
 {
     EspButton* pThis = (EspButton*)pVThis;
+    //pThis->mDown = false;
     pThis->onEndLongPress();
 }
 

@@ -5,6 +5,7 @@
 //#define NULL (uint16_t *)0;
 #define VP_SaveUnder    0b00000001
 #define VP_RestorePrev  0b00000010
+#define VP_WithFram     0b00000100
 #define VP_FullRestore  0b00000011
 #define VP_FrameOffset  2
 

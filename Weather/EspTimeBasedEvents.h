@@ -4,7 +4,7 @@
 #include "xEspTaskRenderer.h"
 
 enum EspEventType { NoEvent, StopAnimationEvnt, ResumeAnimationEvnt, StartNightEvnt, EndNightEvnt, StartSleepEvnt, 
-	                MarketOpenEvnt, MarketCloseEvnt };
+	                MarketOpenEvnt, MarketCloseEvnt, GetTickerPeersEvnt, GetPeersQuatesEvnt};
 
 #define Sun  0b00000001
 #define Mon  0b00000010

@@ -1,7 +1,9 @@
 #pragma once
+#include <SPI.h>
+#include <TFT_eSPI.h> // Hardware-specific library
 
 typedef void* TaskHandle_t;
-
+//typedef void* TFT_eSPI;
 ///////////////////////////////////////////////////////////
 //
 ///////////////////////////////////////////////////////////
@@ -26,12 +28,15 @@ public:
 		createCoreTask(handle);
 	}
 	static void taskCoreCB(void* vThis);
+	
 	virtual void renderTask(int opt, void *data ) {}
 	virtual void preTaskLoop(void* data) {}
 	void setRenderOpt(int set) { mRenderOpt = set; }
 	void enable() { mEnabled = true; }
 	void disable() { mEnabled = false; }
 
+	
+	
 private:
 	char* mName;
 	int   mStackSize;
@@ -49,7 +54,7 @@ private:
 ///////////////////////////////////////////////////////////
 class MainTimeRendererTask : public xEspTaskRenderer {
 public:
-	MainTimeRendererTask() : xEspTaskRenderer("MainTimeRendererTask", 2000, 2, 1, 800) {
+	MainTimeRendererTask() : xEspTaskRenderer("MainTimeRendererTask", 2000, 2, 0, 800) {
 		setRenderOpt(true);
 		resetStatics();
 	}
@@ -65,6 +70,7 @@ public:
 		setRenderOpt(false);
 		resetStatics();
 	}
+	
 private:
 	void resetStatics() {
 		mdispSeconds = mdispTime = "";
@@ -82,14 +88,47 @@ private:
 ///////////////////////////////////////////////////////////
 //
 ///////////////////////////////////////////////////////////
+
+struct Stock
+{
+	String mTicker;
+	String mName;
+	float mLastTrade;
+};
+
 class StockRendererTask : public xEspTaskRenderer {
 public:
-	StockRendererTask() : xEspTaskRenderer("StockRendererTask", 6000, 1, 1, 45000) { setMarketOpen(false); }
+	StockRendererTask() : xEspTaskRenderer("StockRendererTask", 8000, 1, 1, 45000) { mMarketOpen = false;
+	                                                                                 mMarketWasOpen =-1;
+																					 mNumPeers = 0;
+																					 mPeersStocks = NULL;
+	}
 	void renderTask(int opt, void* data);
-	void setMarketOpen(int isOpen) { mMarketOpen = isOpen; }
+	//void setMarketOpen(int isOpen) { mMarketOpen = isOpen; }
+	void verifyCurrentMarketStatus();
+	//void setMarketWasOpen(int wasOpen) { mMarketWasOpen = wasOpen; }
+	void setMarketWasOpen() { mMarketWasOpen = mMarketOpen; }
+	void preTaskLoop(void* data);
+	void getPeers();
+	void renderPeersInViewPort();
+	void setTFT(TFT_eSPI* tft) { mTftPtr = tft; }
 private:
+	int getStockQuate(String ticker, String& current, String& dayHigh, String& dayLow);
+	static void vTimerPeersCallback(TimerHandle_t xTimer);
+	void getPeerName(String ticker, String *name);
 	void renderStocksData();
+	void getPeersLastPrice();
+	void drawOpenMarketHeaders();
+	void resizeArray(int newSize);
+	Stock  *mPeersStocks;
+	String mHoliday;
+	//String mPeers[15];
+	//String mPeerNames[15];
+	String mPeersGroup;
+	int mNumPeers;
 	int mMarketOpen;
+	int mMarketWasOpen;
+	TFT_eSPI* mTftPtr;
 };
 
 ///////////////////////////////////////////////////////////
@@ -108,7 +147,7 @@ private:
 ///////////////////////////////////////////////////////////
 class WeatherRendererTask : public xEspTaskRenderer {
 public:
-	WeatherRendererTask() : xEspTaskRenderer("WeatherRendererTask", 6000, 1, 1, 200000) {}
+	WeatherRendererTask() : xEspTaskRenderer("WeatherRendererTask", 6000, 1, 1, 500000) {}
 	void renderTask(int opt, void* data);
 };
 
@@ -117,7 +156,7 @@ public:
 ///////////////////////////////////////////////////////////
 class CheckButtonsTask : public xEspTaskRenderer {
 public:
-	CheckButtonsTask() : xEspTaskRenderer("CheckButtonsTask", 2000, 1, 0, 10) {}
+	CheckButtonsTask() : xEspTaskRenderer("CheckButtonsTask", 6000, 1, 0, 10) {}
 	void renderTask(int opt, void* data);
 };
 
@@ -126,6 +165,6 @@ public:
 ///////////////////////////////////////////////////////////
 class MsgReciverTask : public xEspTaskRenderer {
 public:
-	MsgReciverTask() : xEspTaskRenderer("MsgReciverTask", 5000, 1, 1, 10) {}
+	MsgReciverTask() : xEspTaskRenderer("MsgReciverTask", 8000, 1, 1, 100) {}
 	void renderTask(int opt, void* data);
 };

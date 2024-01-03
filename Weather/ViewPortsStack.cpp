@@ -1,9 +1,8 @@
 #include "ViewPortsStack.h"
 #include "DebugPrefTools.h"
+#include "EspColors.h"
 
-#define TFT_GREY 0x5AEB
 
-#define MyDarkGREY (byte)1 << 11 | (byte)1 << 5 | (byte)1
 ////////////////////////////////////////////////////////////
 //
 uint16_t  ViewPortsStack::pushViewPort(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t Opt)
@@ -64,9 +63,15 @@ uint16_t  ViewPortsStack::pushViewPortExt(int32_t x, int32_t y, int32_t w, int32
 		mStackArr[mCurViewPortPtr].saveUnder = (uint16_t*)malloc(sizeof(uint16_t) * (h * w));
 		mtftPtr->setViewport(x, y, w, h);
 		mtftPtr->readRect(0, 0, w, h, mStackArr[mCurViewPortPtr].saveUnder);
-		//mtftPtr->frameViewport(TFT_GREY, -2);
+	
 		mtftPtr->fillScreen(bckColor);
 		
+	}
+
+	if (Opt & VP_WithFram)
+	{
+		mtftPtr->setViewport(x + VP_FrameOffset, y + VP_FrameOffset, w -2* VP_FrameOffset, h -2 * VP_FrameOffset);
+		mtftPtr->frameViewport(FrameGRAY, -2);
 	}
 #ifdef _DEBUG_VIEWPORT
   Serial.println("pushViewPort(): return TRUE");
@@ -91,6 +96,10 @@ void ViewPortsStack::popViewPort()
 		mStackArr[mCurViewPortPtr].pw = 0;  // Always returns width of viewport
 		mStackArr[mCurViewPortPtr].ph = 0; // Always returns height of viewport
 		
+	}
+	if (mStackArr[mCurViewPortPtr].opt & VP_WithFram) // Need to get back to the full ViewPort before the restore
+	{
+		mtftPtr->setViewport(mStackArr[mCurViewPortPtr].x, mStackArr[mCurViewPortPtr].y, mStackArr[mCurViewPortPtr].w, mStackArr[mCurViewPortPtr].h);
 	}
 
 	if (mStackArr[mCurViewPortPtr].opt & VP_SaveUnder)
