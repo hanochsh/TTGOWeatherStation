@@ -45,11 +45,9 @@ public:
 	void preTaskLoop(void* data);
 	
 private:
-	void setNTPClient(void* ntpTime) { mNTPClient = (NTPClient * )ntpTime; }
 	EspEventType  getEventTypeToSend(EspTimeEvent* event);
 	void updateNTPClient();
 
-	NTPClient* mNTPClient;
 	void resizeArray(int newsize);
 	EspTimeEvent *mEvents;
 	int mNumEvents;

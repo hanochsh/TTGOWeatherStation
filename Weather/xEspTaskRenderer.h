@@ -1,6 +1,7 @@
 #pragma once
 #include <SPI.h>
 #include <TFT_eSPI.h> // Hardware-specific library
+#include <NTPClient.h> 
 
 typedef void* TaskHandle_t;
 //typedef void* TFT_eSPI;
@@ -34,9 +35,11 @@ public:
 	void setRenderOpt(int set) { mRenderOpt = set; }
 	void enable() { mEnabled = true; }
 	void disable() { mEnabled = false; }
+	void setNTPClientPtr(NTPClient* ntp) { mNTPClient = ntp; }
+	void setTFTPtr(TFT_eSPI* tft) { mTftPtr = tft; }
 
-	
-	
+	static NTPClient* mNTPClient;
+	static TFT_eSPI*  mTftPtr;
 private:
 	char* mName;
 	int   mStackSize;
@@ -104,15 +107,13 @@ public:
 																					 mPeersStocks = NULL;
 	}
 	void renderTask(int opt, void* data);
-	//void setMarketOpen(int isOpen) { mMarketOpen = isOpen; }
 	void verifyCurrentMarketStatus();
-	//void setMarketWasOpen(int wasOpen) { mMarketWasOpen = wasOpen; }
 	void setMarketWasOpen() { mMarketWasOpen = mMarketOpen; }
 	void preTaskLoop(void* data);
 	void getPeers();
 	void renderPeersInViewPort();
-	void setTFT(TFT_eSPI* tft) { mTftPtr = tft; }
 private:
+	void getPeersNames();
 	int getStockQuate(String ticker, String& current, String& dayHigh, String& dayLow);
 	static void vTimerPeersCallback(TimerHandle_t xTimer);
 	void getPeerName(String ticker, String *name);
@@ -122,13 +123,11 @@ private:
 	void resizeArray(int newSize);
 	Stock  *mPeersStocks;
 	String mHoliday;
-	//String mPeers[15];
-	//String mPeerNames[15];
 	String mPeersGroup;
 	int mNumPeers;
 	int mMarketOpen;
 	int mMarketWasOpen;
-	TFT_eSPI* mTftPtr;
+	
 };
 
 ///////////////////////////////////////////////////////////
@@ -145,10 +144,28 @@ private:
 ///////////////////////////////////////////////////////////
 //
 ///////////////////////////////////////////////////////////
+struct DayForcast
+{
+	String mIcon;
+	float mDayMin;
+	float mDayMax;
+	float mPercip;
+	int   mCode;
+};
+
 class WeatherRendererTask : public xEspTaskRenderer {
 public:
 	WeatherRendererTask() : xEspTaskRenderer("WeatherRendererTask", 6000, 1, 1, 500000) {}
 	void renderTask(int opt, void* data);
+
+	void renderForcast();
+	void preTaskLoop(void* data);
+private:
+	void getDaysForcast();
+	DayForcast mDaysForcast[7];
+	const uint16_t* getWeatherIcon(String icon);
+	void drwWeatherIcon(String icon);
+	const char *getIconByCode(int code);
 };
 
 ///////////////////////////////////////////////////////////

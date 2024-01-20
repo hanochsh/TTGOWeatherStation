@@ -29,6 +29,8 @@ const char* finTickerProfile = "stock/profile2?symbol=";
 #define iexapiKey "token=pk_9821757254014256a6f2ef404020db6b"
 #define iexapiStockPrefix "stock/"
 #define iexapiPeersPostfix "/peers?"
+#define iexapiCompaniesData "data/core/company/"
+#define iexapiCompaniesDataPostfix "?"
 
 //https://finnhub.io/api/v1/stock/peers?symbol=PTC&token=clj68h9r01qok8f2vjf0clj68h9r01qok8f2vjfg  peers /stock/market-status?exchange=US
 //https://finnhub.io/api/v1/stock/market-status?exchange=US&token=clj68h9r01qok8f2vjf0clj68h9r01qok8f2vjfg
@@ -60,6 +62,11 @@ void StockRendererTask::preTaskLoop(void* data)
     TimerHandle_t xTimer = xTimerCreate("StockRendererTaskPeersTimer", 
                                         pdMS_TO_TICKS(5000), pdFALSE, (void*)this, StockRendererTask::vTimerPeersCallback);
     xTimerStart(xTimer, 0);
+
+    if (xSemaphoreTake(getTFTMutex(), portMAX_DELAY)) {
+        mTftPtr->pushImage(StocksXPos + 13, StocksYPos + 1, 32, 32, getPTCIcon32x32());
+        xSemaphoreGive(getTFTMutex());
+    }
 }
 
 
@@ -108,6 +115,27 @@ void StockRendererTask::getPeerName(String ticker, String* name)
         //Serial.printf("StockRendererTask::getPeerName name :%s vs %s \n", name->c_str(), tmp.c_str());
     }
 }
+///////////////////////////////////////////////////////////
+//
+void StockRendererTask::getPeersNames()
+{
+    StaticJsonDocument<500> doc;
+    JsonDocument filter;
+    String url = "";
+    filter[0]["companyName"] = true;
+ 
+    buildQuaryUrl(&url, iexapiURL, iexapiCompaniesData, mPeersGroup.c_str(), iexapiCompaniesDataPostfix, iexapiKey, NULL);
+    if (getJsonWithFilterFromUrl(url, &doc,filter))
+    {
+        for (int i = 0; i < mNumPeers; i++)
+        {
+            String tmp = doc[i]["companyName"];
+            //Serial.printf("StockRendererTask::getPeersNames tmp %s \n", tmp.c_str());
+            trimString(tmp, 10);
+            mPeersStocks[i].mName = String(tmp.c_str());
+        }
+    }
+}
 
 ///////////////////////////////////////////////////////////
 //
@@ -135,7 +163,7 @@ void StockRendererTask::getPeers() {
                 resizeArray(mNumPeers + 1);
                 mPeersStocks[mNumPeers].mTicker = payload.substring(lastIndex + 1, i);
 
-                getPeerName(mPeersStocks[mNumPeers].mTicker, &mPeersStocks[mNumPeers].mName);
+                //getPeerName(mPeersStocks[mNumPeers].mTicker, &mPeersStocks[mNumPeers].mName);
                 mPeersStocks[mNumPeers].mLastTrade = 0.0;
                // Serial.printf("StockRendererTask::getPeers Peer %s %s \n", mPeersStocks[mNumPeers].mTicker.c_str(), 
                    // mPeersStocks[mNumPeers].mName.c_str());
@@ -144,6 +172,7 @@ void StockRendererTask::getPeers() {
                 lastIndex = i;
             }
         }
+        getPeersNames(); // get the companies names 
     }
 
 }

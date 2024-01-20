@@ -140,12 +140,13 @@ void EspTimeEvents::updateNTPClient()
 /// </summary>
 void EspTimeEvents::preTaskLoop(void* data)
 {
-    setNTPClient(data);
+    //Serial.println("EspTimeEvents::preTaskLoop before update NTP");
     updateNTPClient();
+    //Serial.println("EspTimeEvents::preTaskLoop After update NTP");
     //enum EspEvetType { StopAnimation, StartNight, EndNight, StartSleep };
     addEvent(StopAnimationEvnt, 22, 18, 2, ResumeAnimationEvnt); 
     addEvent(StopAnimationEvnt, 22, 51, 2, ResumeAnimationEvnt);
-    addEvent(StartNightEvnt, 0, 30, 7*60, EndNightEvnt); 
+    addEvent(StartNightEvnt, 0, 30, 8*60, EndNightEvnt); 
     addEventDay(MarketOpenEvnt, USAW, 16, 30, 7 * 60, MarketCloseEvnt);
 
 }

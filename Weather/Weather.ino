@@ -28,28 +28,9 @@ const int pwmLedChannelTFT = 0;
 
 const char *ssid = "ShiriHome";               ///EDIIIT
 const char *password = "shirihome035274757";  //EDI8IT
-String town = "Tel Aviv";                     //EDDIT
-String Country = "IL";                        //EDDIT
-const String endpoint = "http://api.openweathermap.org/data/2.5/weather?q=" + town + "," + Country + "&units=metric&APPID=";
+
 //const String stockUrl = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=PTC&apikey=CQ4BMVCC56VEWRRJ";
-const char *ptcStockUrl = "https://finnhub.io/api/v1/quote?symbols=PTC,APPL&token=clj68h9r01qok8f2vjf0clj68h9r01qok8f2vjfg";
-// from: https://algotrading101.com/learn/iex-api-guide/:  /tops/last/'PTC,NFLX'
-// https://cloud.iexapis.com/v1/stock/PTC/chart?token=xxx
-// https://cloud.iexapis.com/v1//tops/last/'PTC,NFLX'
-// https://cloud.iexapis.com/v1/tops/last?symbols=AAPL&token=pk_9821757254014256a6f2ef404020db6b
-// http://api.openweathermap.org/data/2.5/weather?q=Tel Aviv,IL&units=metric&APPID=91697f781be1daa54d31d7b4bcb75e5b
-const char *openweathermapKey = "91697f781be1daa54d31d7b4bcb75e5b";
 
-
-
-
-
-
-
-//https://api.openweathermap.org/data/2.5/forecast?lat=32.0833&lon=34.8&units=metric&appid=91697f781be1daa54d31d7b4bcb75e5b
-//https://api.openweathermap.org/data/2.5/forecast?q=Tel Aviv,IL&units=metric&APPID=91697f781be1daa54d31d7b4bcb75e5b
-
-//https://api.weatherbit.io/v2.0/forecast/daily?city=TelAviv,IL&key=f846dc6a4520446f8d6861f4d4b7bcb2
 
 
 extern const GFXfont *getOrbitonFontMed20();
@@ -59,6 +40,7 @@ extern "C" const GFXfont *getOrbitronLight6Font();
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
+
 
 ViewPortsStack viewPorts(&tft);
 
@@ -103,6 +85,11 @@ MsgReciverTask espMsgsReciver;
 EspButton *getRightBtn() {
   return &rightBtn;
 }
+
+EspButton *getLeftBtn() {
+  return &leftBtn;
+}
+
 SemaphoreHandle_t getWifiMutex() {
   return mWifiMutex;
 }
@@ -116,52 +103,6 @@ QueueHandle_t getMessageQueue() {
   return messageQueue;
 }
 
-///////////////////////////////////////////////////////////
-//
-void drwWeatherIcon(String icon) {
-  const uint16_t *iconArr = NULL;
-
-  if (icon == "01n") {
-    iconArr = getWeather01n();
-  } else if (icon == "02n") {
-    iconArr = getWeather02n();
-  } else if (icon == "03n") {
-    iconArr = getWeather03d();
-  } else if (icon == "04n") {
-    iconArr = getWeather04d();
-  } else if (icon == "09n") {
-    iconArr = getWeather09d();
-  } else if (icon == "10n") {
-    iconArr = getWeather10n();
-  } else if (icon == "11n") {
-    iconArr = getWeather11n();
-  } else if (icon == "13n") {
-    iconArr = getWeather13d();
-  } else if (icon == "50n") {
-    iconArr = getWeather50n();
-  } else if (icon == "01d") {
-    iconArr = getWeather01d();
-  } else if (icon == "02d") {
-    iconArr = getWeather02d();
-  } else if (icon == "03d") {
-    iconArr = getWeather03d();
-  } else if (icon == "04d") {
-    iconArr = getWeather04d();
-  } else if (icon == "09d") {
-    iconArr = getWeather09d();
-  } else if (icon == "10d") {
-    iconArr = getWeather10d();
-  } else if (icon == "11d") {
-    iconArr = getWeather11d();
-  } else if (icon == "13d") {
-    iconArr = getWeather13d();
-  } else if (icon == "50d") {
-    iconArr = getWeather50d();
-  }
-
-  if (iconArr != NULL)
-    tft.pushImage(TempXPos + 14, TempYPos - 38, 32, 32, iconArr);
-}
 
 ///////////////////////////////////////////////////////////
 //
@@ -416,15 +357,11 @@ void MsgReciverTask::renderTask(int opt, void *data) {
         break;
       case MarketOpenEvnt:
         Serial.println("MsgReciverTask::renderTask received MarketOpenEvnt");
-        //stockRenderer.setMarketWasOpen(false);
-        //stockRenderer.setMarketOpen(true);
         stockRenderer.verifyCurrentMarketStatus();
         break;
       case MarketCloseEvnt:
         Serial.println("MsgReciverTask::renderTask received MarketCloseEvnt");
-        //stockRenderer.setMarketWasOpen();  // will set what was the market status
-        //stockRenderer.setMarketOpen(false);
-        stockRenderer.verifyCurrentMarketStatus();
+          stockRenderer.verifyCurrentMarketStatus();
         break;
       case GetTickerPeersEvnt:
         Serial.println("MsgReciverTask::renderTask received GetTickerPeersEvnt");
@@ -435,11 +372,7 @@ void MsgReciverTask::renderTask(int opt, void *data) {
   }
 }
 
-///////////////////////////////////////////////////////////
-//
-void WeatherRendererTask::renderTask(int opt, void *data) {
-  renderWeatherData();
-}
+
 
 ///////////////////////////////////////////////////////////
 //
@@ -466,34 +399,32 @@ void setup(void) {
 
   tft.setSwapBytes(true);
 
-  tft.setTextColor(TFT_ORANGE, TFT_BLACK, 1);
-  tft.setCursor(TempXPos, TempYPos + 24, 2);
-  tft.println("Humidity");
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setFreeFont((GFXfont *)getOrbitonFontMed20());
-  tft.setCursor(6, 80);
-  tft.println(town);
-  tft.unloadFont();  // Remove the font to recover memory used
-  //drawCurBckLgt();
   tft.drawLine(TempXPos + TempXWid + 1, 150, TempXPos + TempXWid + 1, 240, TFT_GREY);
 
-  tft.pushImage(StocksXPos + 13, StocksYPos + 1, 32, 32, getPTCIcon32x32());
   timeSetup();
   mTFTMutex = xSemaphoreCreateMutex();
   // Create the message queue
   messageQueue = xQueueCreate(QUEUE_SIZE, sizeof(int));
 
-
-  delay(500);
-  espTimeEvents.createCoreTask(&hEspTimeEventsTaskCore, (void *)&timeClient);
-
+  //delay(500);
+  // Update the base class statics as apperntly the intial update is not enough
+  espTimeEvents.setNTPClientPtr(&timeClient);
+  espTimeEvents.setTFTPtr(&tft);
+  espTimeEvents.createCoreTask(&hEspTimeEventsTaskCore);
+  
+  //Serial.println(" Setup() espTimeEvents");
   timeRenderer.createCoreTask(&hRegularTimeDisplayTaskCore);
+  //Serial.println(" Setup() timeRenderer");
   stockRenderer.createCoreTask(&hStockUpdateTask);
-  stockRenderer.setTFT(&tft);
+  //Serial.println(" Setup() stockRenderer");
   weatherRenderer.createCoreTask(&hWeatherUpdateTask);
+  //Serial.println(" Setup() weatherRenderer");
   checkBtnsTask.createCoreTask(&hBottonsCheck);
+  //Serial.println(" Setup() checkBtnsTask");
   animRenderer.createCoreTask(&hAnimationTaskCore);
+  //Serial.println(" Setup() animRenderer");
   espMsgsReciver.createCoreTask(&hMsgReciverTask);
+  //Serial.println(" Setup() espMsgsReciver");
 
   // Start the FreeRTOS scheduler
   //vTaskStartScheduler(); // must not be called in ESP32 ?
@@ -589,26 +520,13 @@ void LeftBtn::onStartLongPress() {
 
 #define Y_ViewPort 60
   disableMainSCRInfo();
+ // Serial.println("LeftBtn::onStartLongPress after disableMainSCRInfo");
   if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
+   // Serial.println("LeftBtn::onStartLongPress inside  xSemaphoreTake");
     viewPorts.pushViewPort(0, Y_ViewPort, TFT_WIDTH, TFT_HEIGHT - Y_ViewPort, VP_SaveUnder | VP_WithFram);
-
-#define lOffset 4
-
-    tft.setCursor(lOffset, lOffset);  // Set cursor at top left of screen
-    tft.setFreeFont(getOrbitronMedium8Font());
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.println("Tempretures:");
-    tft.setCursor(lOffset, lOffset + tft.getCursorY());
-    tft.println("^IXIC 15232.43");
-    tft.setCursor(lOffset, lOffset + tft.getCursorY());
-    tft.println("PTC 172.3");
-    tft.setCursor(lOffset, lOffset + tft.getCursorY());
-    tft.println("Autodesk 322.3");
-    tft.setCursor(lOffset, lOffset + tft.getCursorY());
-    tft.println("Ansys 172.3");
-    tft.unloadFont();  // Remove the font to recover memory used
-    // Release the mutex when done
+    //Serial.println("LeftBtn::onStartLongPress after pushViewPort");
     xSemaphoreGive(mTFTMutex);
+    weatherRenderer.renderForcast();
   }
 }
 
@@ -654,9 +572,9 @@ int getPayloadFromUrl(String url, String *payload)
 {
   int status = FALSE;
 
-#ifdef _DEBUG_INO
+//#ifdef _DEBUG_INO
   Serial.println("getPayloadFromUrl : " + url);
-#endif
+//#endif
 
 
   if (xSemaphoreTake(mWifiMutex, portMAX_DELAY)) {
@@ -673,7 +591,7 @@ int getPayloadFromUrl(String url, String *payload)
 
         //Serial.println("getPayloadFromUrl : GET > 0");
         *payload = http.getString();
-        //Serial.println(String("Payload :") + *payload);
+        Serial.println(String("Payload :") + *payload);
 
         status = TRUE;
       }  // if get
@@ -702,6 +620,17 @@ int getJsonFromUrl(String url, JsonDocument *josn) {
 
 ///////////////////////////////////////////////////////////
 //
+int getJsonWithFilterFromUrl(String url, JsonDocument *josn, JsonDocument filter) {
+  String payload;
+  if (getPayloadFromUrl(url, &payload)) {
+    deserializeJson(*josn, payload.c_str(), DeserializationOption::Filter(filter));
+    return true;
+  }
+  return false;
+}
+
+///////////////////////////////////////////////////////////
+//
 String buildQuaryUrl(String *outBuff, ...) {
   va_list args;
   va_start(args, outBuff);
@@ -711,7 +640,9 @@ String buildQuaryUrl(String *outBuff, ...) {
     *outBuff += value;
 
   va_end(args);
-
+  const char *find = " ";
+  const char *replace = "%20";
+  outBuff->replace(find, replace); // some Sites can not accept space e.g in "Tel Aviv"
   return *outBuff;
 }
 
@@ -727,49 +658,3 @@ void removeCharFromString(String &str, char charToRemove) {
   }
 }
 
-///////////////////////////////////////////////////////////
-//
-void renderWeatherData() {
-  StaticJsonDocument<1000> doc;
-#ifdef _DEBUG_INO
-  Serial.println("renderWeatherData()");
-#endif
-
-  if (getJsonFromUrl(endpoint + openweathermapKey, &doc)) {
-
-    String temp = doc["main"]["temp"];
-    String humi = doc["main"]["humidity"];
-    String town2 = doc["name"];
-    String weatherIcon = doc["weather"][0]["icon"];
-
-
-    // Debug data
-    //Serial.println("Temperature" + temp);
-    //printf("%s/n",doc["main"]["temp"]);
-    //Serial.println("Humidity" + humi);
-    //Serial.println(town);
-    if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
-      drwWeatherIcon(weatherIcon);
-
-      // Draw Tempreture
-      //tft.setFreeFont(&Orbitron_Medium_20);
-      tft.setFreeFont(getOrbitronMedium8Font());
-      tft.fillRect(TempXPos, TempYPos, TempXWid, 22, TFT_BLACK);  // 20->22
-      tft.setCursor(TempXPos + 7, TempYPos + 17);                 // +18
-      //temp = "88.8";
-      tft.setTextColor(TFT_WHITE, TFT_BLACK, true);  // The true works only for smooth fonts
-      tft.print(temp.substring(0, 4));
-      int x, y;
-      x = tft.getCursorX();
-      y = tft.getCursorY();
-      tft.drawCircle(x + 3, y - 12, 2, TFT_WHITE);  // Degrees circle
-      // Draw Humidity value
-      tft.fillRect(TempXPos, TempYPos + 46, TempXWid, 20, TFT_BLACK);
-      tft.setCursor(TempXPos + 7, TempYPos + 58);  //60
-      tft.println(humi + "%");
-      tft.unloadFont();  // Remove the font to recover memory used
-      xSemaphoreGive(mTFTMutex);
-    }  // close Mutex
-
-  }  // End of SUCCESSful call
-}

@@ -2,6 +2,9 @@
 
 #include "xEspTaskRenderer.h"
 
+NTPClient* xEspTaskRenderer::mNTPClient = NULL;
+TFT_eSPI*  xEspTaskRenderer::mTftPtr = NULL;
+
 //////////////////////////////////////////////
 //
 void xEspTaskRenderer::createCoreTask(TaskHandle_t * handle)
