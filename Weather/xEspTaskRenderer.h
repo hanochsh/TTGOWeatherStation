@@ -172,8 +172,8 @@ private:
 //
 ///////////////////////////////////////////////////////////
 class CheckButtonsTask : public xEspTaskRenderer {
-public:
-	CheckButtonsTask() : xEspTaskRenderer("CheckButtonsTask", 6000, 1, 0, 10) {}
+public: 
+	CheckButtonsTask() : xEspTaskRenderer("CheckButtonsTask", 8000, 1, 0, 10) {}
 	void renderTask(int opt, void* data);
 };
 
@@ -181,7 +181,7 @@ public:
 //
 ///////////////////////////////////////////////////////////
 class MsgReciverTask : public xEspTaskRenderer {
-public:
-	MsgReciverTask() : xEspTaskRenderer("MsgReciverTask", 8000, 1, 1, 100) {}
+public: //  increased priority since sometimes that clock takes over in night mode
+	MsgReciverTask() : xEspTaskRenderer("MsgReciverTask", 8000, 2, 1, 100) {}
 	void renderTask(int opt, void* data);
 };

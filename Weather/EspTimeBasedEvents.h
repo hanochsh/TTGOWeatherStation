@@ -4,7 +4,7 @@
 #include "xEspTaskRenderer.h"
 
 enum EspEventType { NoEvent, StopAnimationEvnt, ResumeAnimationEvnt, StartNightEvnt, EndNightEvnt, StartSleepEvnt, 
-	                MarketOpenEvnt, MarketCloseEvnt, GetTickerPeersEvnt, GetPeersQuatesEvnt};
+	                MarketOpenEvnt, MarketCloseEvnt, GetTickerPeersEvnt, GetPeersQuatesEvnt, GoToDeepSleepEvnt};
 
 #define Sun  0b00000001
 #define Mon  0b00000010
@@ -46,6 +46,7 @@ public:
 	
 private:
 	EspEventType  getEventTypeToSend(EspTimeEvent* event);
+	static void vTimerUpdateCallback(TimerHandle_t xTimer);
 	void updateNTPClient();
 
 	void resizeArray(int newsize);

@@ -2,6 +2,7 @@
 #include <string.h>
 #include <HardwareSerial.h>
 #include "DebugPrefTools.h"
+#include "EspDebug.h"
 
 extern SemaphoreHandle_t getWifiMutex();
 extern QueueHandle_t     getMessageQueue();
@@ -136,18 +137,33 @@ void EspTimeEvents::updateNTPClient()
      xSemaphoreGive(mWifiMutex);
     }
 }
+
+//////////////////////////////////////////////
+//
+void EspTimeEvents::vTimerUpdateCallback(TimerHandle_t xTimer)
+{
+    EspTimeEvents *pThis = (EspTimeEvents*)pvTimerGetTimerID(xTimer);
+    pThis->updateNTPClient();
+}
+
 ///////////////////////////////////////////////////////////////
 /// </summary>
 void EspTimeEvents::preTaskLoop(void* data)
 {
     //Serial.println("EspTimeEvents::preTaskLoop before update NTP");
     updateNTPClient();
+    // set timer to update the time every 5 min
+    TimerHandle_t xTimer = xTimerCreate("vTimerUpdateCallback",
+        pdMS_TO_TICKS(5*60000), pdTRUE, (void*)this, EspTimeEvents::vTimerUpdateCallback);
+    xTimerStart(xTimer, 0);
     //Serial.println("EspTimeEvents::preTaskLoop After update NTP");
     //enum EspEvetType { StopAnimation, StartNight, EndNight, StartSleep };
     addEvent(StopAnimationEvnt, 22, 18, 2, ResumeAnimationEvnt); 
     addEvent(StopAnimationEvnt, 22, 51, 2, ResumeAnimationEvnt);
     addEvent(StartNightEvnt, 0, 30, 8*60, EndNightEvnt); 
-    addEventDay(MarketOpenEvnt, USAW, 16, 30, 7 * 60, MarketCloseEvnt);
+    addEvent(StartNightEvnt, 15, 23, 2, EndNightEvnt);
+    addEventDay(MarketOpenEvnt, USAW, 16, 30, 7 * 60, MarketCloseEvnt); 
+    addEvent(GoToDeepSleepEvnt, 1, 30, 0, NoEvent); // go to sleep between 1:30 AM to 4:50 AM
 
 }
 
@@ -158,8 +174,12 @@ void EspTimeEvents::renderTask(int opt, void* data)
     EspEventType sendMsg = NoEvent;
     int i;
 
-    updateNTPClient();
-
+    //updateNTPClient();
+    if (mNTPClient->getEpochTime() < 100000)
+    {
+        LOG_ERR("Date/Time Not updated, skip checking events");
+        return;
+    }
     for (i = 0; i < mNumEvents; i++)
     {
         sendMsg = getEventTypeToSend(&mEvents[i]);

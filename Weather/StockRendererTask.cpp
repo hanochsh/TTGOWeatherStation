@@ -5,6 +5,8 @@
 #include "xEspTaskRenderer.h"
 #include "EspTimeBasedEvents.h"
 #include "EspColors.h"
+#define dbgVerbose 0
+#include "EspDebug.h"
 #include <TFT_eSPI.h> 
 
 //extern "C" const GFXfont * getOrbitronLight15Font();
@@ -101,12 +103,14 @@ void trimString(String &str, size_t maxLength) {
 //
 void StockRendererTask::getPeerName(String ticker, String* name)
 {
-    StaticJsonDocument<500> doc;
+    StaticJsonDocument<40> doc;
     String url = "";
+    JsonDocument filter;
+     filter["name"] = true;
 
     buildQuaryUrl(&url, finnhubURL, finTickerProfile, ticker, finnhubKey, NULL);
     //Serial.printf("StockRendererTask::getPeerName url:%s \n", url.c_str());
-    if (getJsonFromUrl(url, &doc)) {
+    if (getJsonWithFilterFromUrl(url, &doc, filter)) {
         //Serial.printf("StockRendererTask::getPeerName got the doc !\n");
         String tmp = doc["name"];
         trimString(tmp, 10);
@@ -145,14 +149,19 @@ void StockRendererTask::getPeers() {
     int lastIndex = -1;
     String payload;
 
-    //Serial.printf("StockRendererTask::getPeers mPeers \n ");
-    buildQuaryUrl(&url, iexapiURL, iexapiStockPrefix, "PTC", iexapiPeersPostfix, iexapiKey, NULL);
+    if (mNumPeers != 0) // its a restart of the events but the peers data is already in memory
+        return;
+
+    LOG_DBG("");
+
+    //buildQuaryUrl(&url, iexapiURL, iexapiStockPrefix, "PTC", iexapiPeersPostfix, iexapiKey, NULL);
+    buildQuaryUrl(&url, finnhubURL, finTickerPeersPrefix, "PTC", finnhubKey, NULL);
     //Serial.printf("StockRendererTask::getPeers url %s \n ", url.c_str());
     if (getPayloadFromUrl(url, &payload)) {
         payload.remove(payload.length() - 1, 1);
         payload.remove(0, 1);
         removeCharFromString(payload, '"');
-        payload = "PTC," + payload;
+        payload = "ADSK,CDNS,TEAM,DASTY," + payload;
         mPeersGroup = payload;
         payload += ",";
         
@@ -163,7 +172,7 @@ void StockRendererTask::getPeers() {
                 resizeArray(mNumPeers + 1);
                 mPeersStocks[mNumPeers].mTicker = payload.substring(lastIndex + 1, i);
 
-                //getPeerName(mPeersStocks[mNumPeers].mTicker, &mPeersStocks[mNumPeers].mName);
+                getPeerName(mPeersStocks[mNumPeers].mTicker, &mPeersStocks[mNumPeers].mName);
                 mPeersStocks[mNumPeers].mLastTrade = 0.0;
                // Serial.printf("StockRendererTask::getPeers Peer %s %s \n", mPeersStocks[mNumPeers].mTicker.c_str(), 
                    // mPeersStocks[mNumPeers].mName.c_str());
@@ -172,7 +181,7 @@ void StockRendererTask::getPeers() {
                 lastIndex = i;
             }
         }
-        getPeersNames(); // get the companies names 
+        //getPeersNames(); // get the companies names 
     }
 
 }
@@ -182,17 +191,17 @@ void StockRendererTask::getPeers() {
 void StockRendererTask::verifyCurrentMarketStatus() {
     StaticJsonDocument<250> doc;
     String url = "";
-    //Serial.println("StockRendererTask::verifyCurrentMarketStatus");
+    LOG_DBG("");
     buildQuaryUrl(&url, finnhubURL, finMarketStatusPrefix, finnhubKey, NULL);
-    //Serial.printf("StockRendererTask::verifyCurrentMarketStatus url:%s \n", url.c_str());
+    LOG_DBG(" url:%s \n", url.c_str());
     if (getJsonFromUrl(url, &doc)) {
-        //Serial.printf("StockRendererTask::verifyCurrentMarketStatus got the doc !\n");
+        LOG_DBG("got the doc !\n");
         setMarketWasOpen();
         mMarketOpen = doc["isOpen"];
         String tmp = doc["holiday"];
         mHoliday = tmp != "null" ? tmp : "";
     }
-    //Serial.printf("StockRendererTask::verifyCurrentMarketStatus %d Holyday %s ", mMarketOpen,mHoliday.c_str());
+    LOG_DBG(" %d Holyday %s ", mMarketOpen,mHoliday.c_str());
 }
 
 
@@ -203,8 +212,9 @@ int StockRendererTask::getStockQuate(String ticker, String& current, String& day
 {
 	String buff;
     StaticJsonDocument<250> doc;
-    
+    LOG_DBG("Ticker %s", ticker.c_str());
 	if (getJsonFromUrl(buildQuaryUrl(&buff, finnhubURL, finStockQoutePrefix, ticker.c_str(), finnhubKey, NULL), &doc)) {
+        LOG_DBG("Parsing the JSON");
         String tmpStr = doc["c"];   current = tmpStr;
         String tmpStr1 = doc["h"];  dayHigh = tmpStr1;
         String tmpStr2 = doc["l"];  dayLow  = tmpStr2;
@@ -224,13 +234,8 @@ void StockRendererTask::renderStocksData() {
     if ( !notTheFirstTime)
         verifyCurrentMarketStatus();
 
-#ifdef _DEBUG_INO
-    Serial.println("renderStocksData()");
-#endif
+    LOG_DBG("");
 
-#ifdef _DEBUG_INO
-    Serial.println("renderStocksData() isMarketOpen:" + String(isMarketOpenNow));
-#endif
     //Serial.printf("MarketOpen %d, WasOpen %d, notTheFirstTime %d \n",mMarketOpen,mMarketWasOpen, notTheFirstTime  );
     if (mMarketOpen != mMarketWasOpen) {
         if (xSemaphoreTake(getTFTMutex(), portMAX_DELAY)) {
@@ -324,8 +329,16 @@ void StockRendererTask::getPeersLastPrice()
     }
 }
 
+
+
 ///////////////////////////////////////////////////////////
 //
+struct Trade
+{
+    String mLastPrice;
+    int    mUpDown;
+};
+
 void StockRendererTask::renderPeersInViewPort()
 {
     TFT_eSprite scroller = TFT_eSprite(mTftPtr); // Sprite object 
@@ -349,26 +362,50 @@ void StockRendererTask::renderPeersInViewPort()
         //mTftPtr->unloadFont();  // Remove the font to recover memory u
         xSemaphoreGive(getTFTMutex());
     }
-    getPeersLastPrice();
+    //getPeersLastPrice();
     int yPlot = 0;
     int idx = 0;
-    String lastPrice;
+    int pause;
+  
+    String dayHigh;
+    String dayLow, lastPrice;
+    Trade*  lastTrades = new Trade[mNumPeers];
+
+    for (idx = 0; idx < mNumPeers; idx++)
+        lastTrades[idx].mUpDown = StockErr; // sort of reset the data
+    idx = 0;
     while  (getRightBtn()->getIsDown())
     {
         if (yPlot < 127)
           yPlot = idx * 16;
         if (yPlot > 127) yPlot = 127;
+
+        if (lastTrades[idx].mUpDown == StockErr)
+        {
+            if (StockErr != (lastTrades[idx].mUpDown = getStockQuate(mPeersStocks[idx].mTicker, lastPrice, dayHigh, dayLow)))
+            {
+                LOG_DBG("Got the stock quate %s", lastPrice.c_str());
+                lastTrades[idx].mLastPrice = lastPrice;
+            }
+            else
+                lastTrades[idx].mLastPrice = "-";
+        }
+
         //scroller.drawNumber(i, lOffset, yPlot, 2); // plot value in font 2
         if (xSemaphoreTake(getTFTMutex(), portMAX_DELAY)) {
             scroller.setTextColor(TFT_WHITE, MyDarkGREY);
+
+            if (mPeersStocks[idx].mName.length() == 0)
+                LOG_ERR("mPeersStocks[idx].mName.length() == 0");
             scroller.drawString(mPeersStocks[idx].mName, lOffset, yPlot, 2); // plot value in font 2
-            
-            //mTftPtr->setTextColor(stockStat == StockDOWN ? TFT_RED : TFT_GREEN, MyDarkGREY);
-            if (mPeersStocks[idx].mLastTrade != 0.0)
+      
+          /*  if (mPeersStocks[idx].mLastTrade != 0.0)
                 lastPrice = String(mPeersStocks[idx].mLastTrade);
             else
-                lastPrice = "-";
-            scroller.drawString(lastPrice, viewPortWidth/2 + 13, yPlot, 2);
+                lastPrice = "-"; */
+            if (lastTrades[idx].mUpDown != StockErr)
+                scroller.setTextColor(lastTrades[idx].mUpDown == StockDOWN ? TFT_RED : TFT_GREEN, MyDarkGREY);
+            scroller.drawString(lastTrades[idx].mLastPrice, viewPortWidth/2 + 13, yPlot, 2);
             idx++;
 
             scroller.pushSprite(0, 32);
@@ -380,9 +417,15 @@ void StockRendererTask::renderPeersInViewPort()
                 scroller.scroll(0, -16); // scroll stext 0 pixels left/right, 16 up
 
             xSemaphoreGive(getTFTMutex());
-        }
-        vTaskDelay(pdMS_TO_TICKS(1000));
+		} // end of if Semaphore TFT
+		// If the next record is not error, the call to get the stock was not done so delay is needed
+		pause = lastTrades[idx].mUpDown != StockErr ? 1500 : 300;
+        LOG_DBG("Pause is %d", pause);
+		vTaskDelay(pdMS_TO_TICKS(pause));
+
     }
+
+    delete[] lastTrades;
     
 }
 

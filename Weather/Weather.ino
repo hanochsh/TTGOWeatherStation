@@ -16,9 +16,10 @@
 #include "EspColors.h"
 #include "EspUtils.h"
 #include "EspIcons.h"
+//#define dbgVerbose 1
+#include "EspDebug.h"
 //#include "Captive_Portal_WiFi_Manager.h"
 TFT_eSPI tft = TFT_eSPI();  // Invoke custom library
-
 
 
 const int pwmFreq = 5000;
@@ -323,17 +324,17 @@ void MsgReciverTask::renderTask(int opt, void *data) {
 
     switch (recEvent) {
       case StopAnimationEvnt:
-        Serial.println("MsgReciverTask::renderTask received StopAnimationEvnt");
+        LOG_INF(" received StopAnimationEvnt");
         animRenderer.disable();
         //vTaskSuspend(hAnimationTaskCore);
         break;
       case ResumeAnimationEvnt:
-        Serial.println("MsgReciverTask::renderTask received ResumeAnimationEvnt");
+        LOG_INF(" received ResumeAnimationEvnt");
         animRenderer.enable();
         //vTaskResume(hAnimationTaskCore);
         break;
       case StartNightEvnt:
-        Serial.println("MsgReciverTask::renderTask received StartNightEvnt");
+        LOG_INF(" received StartNightEvnt");
         ledcWrite(pwmLedChannelTFT, 1);
         disableMainSCRInfo();
         if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
@@ -342,9 +343,10 @@ void MsgReciverTask::renderTask(int opt, void *data) {
           xSemaphoreGive(mTFTMutex);
         }
         timeRenderer.disableMainScreen();
+        deleteApplicationTasks();
         break;
       case EndNightEvnt:
-        Serial.println("MsgReciverTask::renderTask received EndNightEvnt");
+        LOG_INF(" received EndNightEvnt");
         ledcWrite(pwmLedChannelTFT, getCurBckLgt());
 
         if (xSemaphoreTake(mTFTMutex, portMAX_DELAY)) {
@@ -353,22 +355,30 @@ void MsgReciverTask::renderTask(int opt, void *data) {
           xSemaphoreGive(mTFTMutex);
         }
         timeRenderer.enableMainScreen();
+        //enableMainSCRInfo();
+        createApplicationTasks();
         enableMainSCRInfo();
         break;
       case MarketOpenEvnt:
-        Serial.println("MsgReciverTask::renderTask received MarketOpenEvnt");
+        LOG_INF(" received MarketOpenEvnt");
         stockRenderer.verifyCurrentMarketStatus();
         break;
       case MarketCloseEvnt:
-        Serial.println("MsgReciverTask::renderTask received MarketCloseEvnt");
+        Serial.println("received MarketCloseEvnt");
           stockRenderer.verifyCurrentMarketStatus();
         break;
       case GetTickerPeersEvnt:
-        Serial.println("MsgReciverTask::renderTask received GetTickerPeersEvnt");
+        LOG_INF("received GetTickerPeersEvnt");
         stockRenderer.getPeers();
         break;
+      case GoToDeepSleepEvnt:
+  #define SleepTime 60*200 // seconds
+         esp_sleep_enable_timer_wakeup(SleepTime * 1e6);
+         LOG_INF("Setup ESP32 to sleep for every %f Seconds",SleepTime);
+         esp_deep_sleep_start();
+         break;
     }
-    Serial.println("MsgReciverTask::renderTask: done handleing last event");
+    LOG_INF("done handleing last event");
   }
 }
 
@@ -382,6 +392,27 @@ void CheckButtonsTask::renderTask(int opt, void *data) {
 
 ///////////////////////////////////////////////////////////
 //
+void createApplicationTasks()
+{
+  stockRenderer.createCoreTask(&hStockUpdateTask);
+  //Serial.println(" Setup() stockRenderer");
+  weatherRenderer.createCoreTask(&hWeatherUpdateTask);
+  //Serial.println(" Setup() weatherRenderer");
+  animRenderer.createCoreTask(&hAnimationTaskCore);
+  //Serial.println(" Setup() animRenderer");
+}
+
+///////////////////////////////////////////////////////////
+//
+void deleteApplicationTasks()
+{
+  vTaskDelete(hStockUpdateTask);
+  vTaskDelete(hWeatherUpdateTask);
+  vTaskDelete(hAnimationTaskCore);
+}
+
+///////////////////////////////////////////////////////////
+//
 void setup(void) {
   setupBtns();
 
@@ -390,7 +421,7 @@ void setup(void) {
 
   clearScreen();
   ledcSetup(pwmLedChannelTFT, pwmFreq, pwmResolution);
-  ledcAttachPin(TFT_BL, pwmLedChannelTFT);
+  ledcAttachPin( 18 /*TFT_BL*/, pwmLedChannelTFT); // commenting out since the library update from 2.5.34 missing symbole TFT_BL 
   ledcWrite(pwmLedChannelTFT, getCurBckLgt());
   Serial.begin(115200);
   wifiSetup();
@@ -415,13 +446,14 @@ void setup(void) {
   //Serial.println(" Setup() espTimeEvents");
   timeRenderer.createCoreTask(&hRegularTimeDisplayTaskCore);
   //Serial.println(" Setup() timeRenderer");
-  stockRenderer.createCoreTask(&hStockUpdateTask);
+  createApplicationTasks();
+  //stockRenderer.createCoreTask(&hStockUpdateTask);
   //Serial.println(" Setup() stockRenderer");
-  weatherRenderer.createCoreTask(&hWeatherUpdateTask);
+  //weatherRenderer.createCoreTask(&hWeatherUpdateTask);
   //Serial.println(" Setup() weatherRenderer");
   checkBtnsTask.createCoreTask(&hBottonsCheck);
   //Serial.println(" Setup() checkBtnsTask");
-  animRenderer.createCoreTask(&hAnimationTaskCore);
+  //animRenderer.createCoreTask(&hAnimationTaskCore);
   //Serial.println(" Setup() animRenderer");
   espMsgsReciver.createCoreTask(&hMsgReciverTask);
   //Serial.println(" Setup() espMsgsReciver");
@@ -573,7 +605,8 @@ int getPayloadFromUrl(String url, String *payload)
   int status = FALSE;
 
 //#ifdef _DEBUG_INO
-  Serial.println("getPayloadFromUrl : " + url);
+  LOG_DBG("%s",url.c_str());
+
 //#endif
 
 
@@ -591,7 +624,8 @@ int getPayloadFromUrl(String url, String *payload)
 
         //Serial.println("getPayloadFromUrl : GET > 0");
         *payload = http.getString();
-        Serial.println(String("Payload :") + *payload);
+        LOG_DBG("Got the payload %s", payload->c_str());
+        //Serial.println(String("Payload :") + *payload);
 
         status = TRUE;
       }  // if get
@@ -611,7 +645,9 @@ int getPayloadFromUrl(String url, String *payload)
 //
 int getJsonFromUrl(String url, JsonDocument *josn) {
   String payload;
+  LOG_DBG("");
   if (getPayloadFromUrl(url, &payload)) {
+    LOG_DBG("got the payload: %s", payload.c_str());
     deserializeJson(*josn, payload.c_str());
     return true;
   }
